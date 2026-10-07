@@ -30,13 +30,16 @@
         <div class="card wide">
           <h1>SPOTTER <small>// ONE SHOT</small></h1>
           <p class="lede">You lie in the grass with a pair of binoculars. Beside you, <b>Ghost</b>, an AI sniper, waits behind the rifle. He only shoots what you tell him to. Find the target through your binoculars, read the weather, and <b>talk him onto the shot</b>.</p>
-          <div class="actions top"><button class="primary" id="howBtn">HOW TO PLAY</button><span class="say">New here? Read this first, then start with Mission 1.</span></div>
+          <div class="actions top"><button class="primary" id="howBtn">HOW TO PLAY</button><span class="say">New here? Read this, try Training 1, then go for Survival.</span></div>
           <div class="roles">
             <div><span class="ico">🔭</span><b>You · Spotter</b><p>Binoculars up. Find the target, read range, wind, temperature and weather, give the call.</p></div>
             <div><span class="ico">🎯</span><b>Ghost · AI Sniper</b><p>Lies next to you. Dials what you call, tells you who he's on, warns you when the wind shifts, fires on your order.</p></div>
             <div><span class="ico">🕴️</span><b>The Target</b><p>Walks, stops, rides trains. Anything but a headshot and he may survive and run.</p></div>
           </div>
-          <h3>Campaign · then Endless</h3>
+          <h3>Survival</h3>
+          <div class="levels" id="survivalSlot"></div>
+          <h3>Training</h3>
+          <p class="say">Five fixed drills, easy to hard. Learn each skill here, then take it into Survival.</p>
           <div class="levels" id="levelList"></div>
           <details>
             <summary>What can I say?</summary>
@@ -104,8 +107,8 @@
               <p class="say">70+ passes. The hint (<kbd>H</kbd>) caps the score at 60.</p>
             </div>
             <div><h4>Modes</h4>
-              <p><b>Campaign</b>: five missions, from an open field to a moving night train.</p>
-              <p><b>Endless Contracts</b>: endless random variations with new targets, ranges, weather, crowds and trains. Every contract is harder. Fail one and you lose a life. Three lives.</p>
+              <p><b>Survival</b> (the main mode): endless contracts with new targets, ranges, weather, crowds and trains. Every contract is harder. Fail one and you lose a life. Three lives. How far can you go?</p>
+              <p><b>Training</b>: five fixed drills, from an open field to a moving night train. Each one teaches a skill.</p>
               <h4>Keys</h4>
               <p class="say"><kbd>M</kbd> mic · <kbd>B</kbd> binoculars · arrows/drag look · scroll/<kbd>Z</kbd> zoom · <kbd>C</kbd> re-center · <kbd>F</kbd> fire · <kbd>H</kbd> hint · <kbd>T</kbd> type · <kbd>Esc</kbd> menu</p>
             </div>
@@ -153,7 +156,7 @@
         </div>
       </div>
 
-      <!-- Campaign complete -->
+      <!-- Run complete -->
       <div class="modal hidden" id="finalModal">
         <div class="card">
           <div class="kicker" id="finalKicker">CAMPAIGN COMPLETE</div>

@@ -6,19 +6,26 @@ You lie in the grass with a pair of binoculars. Beside you, **Ghost**, an AI sni
 behind the rifle. He only shoots what you tell him to. Find the target through your
 binoculars, read the weather, and **talk him onto the shot**.
 
-## ▶️ Quick start
+## ▶️ Play
+
+**Online (GitHub Pages):** open the repo's Pages URL, e.g. `https://b-i-king.github.io/hitman-sniper-game/`,
+in **Chrome or Edge**, click **MIC** and allow the microphone. The game runs entirely in the
+browser: speech recognition and the voices of Ghost and the target use the browser's own
+speech engine, so no server or API key is needed.
+
+**Locally, with Fish Audio voices:**
 
 ```bash
-npm start            # Node 20+, no install needed → open http://localhost:3000 in Chrome or Edge
+cp .env.example .env   # add FISH_API_KEY
+npm start              # Node 20+, no install needed → http://localhost:3000
 ```
 
-Click **MIC** (or press `M`), allow the microphone, and pick **Mission 1**. Optional: put a
-`FISH_API_KEY` in `.env` to give Ghost and the target Fish Audio voices (see [Voice stack](#voice-stack)).
+Press **Enter** on the menu to start **Survival**, the main mode. New players can try **Training 1** first.
 
 ## 🎮 How to play
 
 1. **Turn on your mic.** Click **MIC** (or press `M`) and allow access. Use Chrome or Edge. Headphones help. No mic? Type the same words into the box at the bottom.
-2. **Read the briefing.** It tells you who the target is (suit, tie, glasses, hat) and what the weather is doing. Say *"start mission"*.
+2. **Start Survival** (press Enter on the menu) or pick a Training drill. **Read the briefing.** It tells you who the target is (suit, tie, glasses, hat) and what the weather is doing. Say *"start mission"*.
 3. **Look through your binoculars.** Drag the view or use the arrow keys to scan, and scroll to zoom. Every person has a number tag. Press `B` (or say *"binoculars down"*) to lower them and see Ghost lying prone beside you.
 4. **Name the target.** Say *"Target three."* Ghost replies with what he sees through his scope (*"Black suit, blue tie"*). If that isn't your man, pick again.
 5. **Call the conditions** shown on the right:
@@ -57,23 +64,23 @@ You can say the whole call in one breath: *"Target two, range four fifty, wind s
 
 ## Modes
 
-### Campaign: 5 missions (easy → hard)
+### Survival (main mode)
 
-| # | Mission | Range | Weather | Challenge |
+Endless contracts, each a random variation of the five Training drills. Each contract rolls a
+new target (name, suit, tie, glasses, hat), range, wind, gusts, temperature, weather (clear,
+rain, snow, fog, heat haze), crowd size, walking patterns, train speed and time limit. The
+difficulty climbs with every contract. Fail one (score under 70 or a civilian hit) and you
+lose a life. You have 3 lives. Your best score is saved in your browser.
+
+### Training: 5 drills (easy → hard)
+
+| # | Drill | Range | Weather | Skill it teaches |
 |---|---|---|---|---|
 | 1 | Open Field | 300 m | Clear | Target stands still, alone in the middle of the field. Learn the basics |
 | 2 | The Farmhouse | 450 m | Clear, windy | 2 civilians next to the target, steady crosswind |
 | 3 | Winter Market | 600 m | Snow, 15°F | Cold air adds drop, gusty wind, a walking target and a decoy in a similar suit |
 | 4 | Rooftop Rendezvous | 800 m | Heat haze, 95°F | Laser blocked, so you measure the range yourself. Strong gusts |
 | 5 | The Midnight Express | 450 m | Night rain | Target on a **constantly moving train**, seen through night vision. Lead him and fire through the window |
-
-### Endless Contracts
-
-Endless random variations of the five missions. Each contract rolls a new target (name, suit,
-tie, glasses, hat), range, wind, gusts, temperature, weather (clear, rain, snow, fog, heat
-haze), crowd size, walking patterns, train speed and time limit. The difficulty climbs with
-every contract. Fail one (score under 70 or a civilian hit) and you lose a life. You have 3
-lives.
 
 ### Weather and the elements
 
@@ -121,7 +128,23 @@ Numbers work spoken ("six fifty", "one point five", "minus five") or as digits.
 
 Keyboard: `M` mic on/off · `B` binoculars · arrows or drag to look · scroll or `Z` zoom · `C` re-center · `F` fire · `H` hint · `T` type a command · `Space` push-to-talk (Fish mode) · `Esc` menu.
 
-## Run it
+## Host it on GitHub Pages
+
+The game is static: `public/` is the whole site, and `server.mjs` is only needed for Fish Audio.
+
+1. In the repo on GitHub, open **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. Push to `main`, or run the **Deploy to GitHub Pages** workflow from the **Actions** tab.
+   The workflow (`.github/workflows/pages.yml`) runs the tests, then publishes `public/`.
+4. The URL appears in the workflow run and under Settings → Pages:
+   `https://<user>.github.io/<repo>/`.
+
+Pages serves over HTTPS, which browsers require before they allow the microphone. On Pages
+the game uses browser speech recognition and browser voices. The Fish Audio voices, Fish
+speech-to-text and the LLM interpreter need the server, because the API key must never be in
+the page.
+
+## Run it locally
 
 Requires **Node.js 20+**. No `npm install` needed: the server has zero dependencies.
 
@@ -151,8 +174,8 @@ server.mjs            static server + /api/tts, /api/stt (Fish Audio), /api/snip
 public/index.html     UI shell
 public/js/
   main.js             game loop, state machine, HUD, debrief
-  levels.js           campaign mission definitions (add your own here)
-  endless.js          Endless Contracts generator (seeded variations of the campaign)
+  levels.js           the five Training drills (Survival builds variations of these)
+  endless.js          Survival contract generator (seeded variations of the drills)
   world.js            people, train, wind over time, hit testing, 0-100 scoring
   ballistics.js       drop / drift / time of flight / firing solution
   sniper.js           the AI sniper: applies spotter calls, tracks, computes impacts
@@ -170,7 +193,7 @@ npm test
 ```
 
 The tests check that a perfect call eliminates the target on every mission, that a skipped
-range call misses, that every generated Endless contract is winnable, the direction of the ballistics effects, civilian casualties, train
+range call misses, that every generated Survival contract is winnable, the direction of the ballistics effects, civilian casualties, train
 occlusion, and the speech parser on real-world phrasings.
 
 ## Adding a mission
