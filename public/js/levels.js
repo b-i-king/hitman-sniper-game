@@ -1,19 +1,23 @@
-// Mission definitions, easiest first. All positions are in meters on the "target plane":
+// Campaign mission definitions, easiest first. Endless mode (endless.js) builds random
+// variations of these five. All positions are in meters on the "target plane":
 // x = horizontal (0 = scene center), y = height above the ground.
 //
 // wind: { base, gust } in mph; positive = blowing toward the right (coming FROM the left).
 // people[].move: optional walk pattern { from, to, speed (m/s), pause (s), phase (s) }.
+// weather: 'clear' | 'rain' | 'snow' | 'fog' | 'heat' (fog and heat knock out the rangefinder).
 // train: optional { speed (m/s), cars, carLength, floorY, windows } - passengers ride in it.
 
-const SUIT = {
+export const SUIT = {
   target: { coat: '#16161a', shirt: '#f2f2f2', tie: '#d01818', pants: '#16161a', skin: '#d9a77c', hair: '#2a1d14', glasses: true },
 };
 
-const civ = (coat, pants, extra = {}) => ({ coat, shirt: extra.shirt || coat, tie: null, pants, skin: extra.skin || '#e0b58f', hair: extra.hair || '#3a2a1a', ...extra });
+export const civ = (coat, pants, extra = {}) => ({ coat, shirt: extra.shirt || coat, tie: null, pants, skin: extra.skin || '#e0b58f', hair: extra.hair || '#3a2a1a', ...extra });
 
 export const LEVELS = [
   {
     id: 'field',
+    weather: 'clear',
+    scene: 'Dawn. You and Ghost lie side by side in the tall grass on a ridge above an empty field. Your binoculars are up; Ghost is behind the rifle, waiting for your word.',
     name: 'Open Field',
     codename: 'OPERATION DAYBREAK',
     difficulty: 'Recruit',
@@ -48,6 +52,8 @@ export const LEVELS = [
   },
   {
     id: 'farm',
+    weather: 'clear',
+    scene: 'Late morning on a quiet farm. You are both dug in behind a hedgerow. The wind is rattling the orange marker flag by the fence - use it.',
     name: 'The Farmhouse',
     codename: 'OPERATION HAYSTACK',
     difficulty: 'Easy',
@@ -88,6 +94,8 @@ export const LEVELS = [
   },
   {
     id: 'market',
+    weather: 'snow',
+    scene: 'A frozen market square. Snow is falling and your breath fogs the glass. Ghost is tucked into a bell tower beside you, rifle resting on the ledge.',
     name: 'Winter Market',
     codename: 'OPERATION COLD SNAP',
     difficulty: 'Medium',
@@ -130,6 +138,8 @@ export const LEVELS = [
   },
   {
     id: 'rooftop',
+    weather: 'heat',
+    scene: 'Sunset after a scorching day. Heat shimmer is boiling off the rooftops and has blinded the laser rangefinder. You will have to measure the range yourself.',
     name: 'Rooftop Rendezvous',
     codename: 'OPERATION SKYLINE',
     difficulty: 'Hard',
@@ -171,6 +181,8 @@ export const LEVELS = [
   },
   {
     id: 'train',
+    weather: 'rain',
+    scene: 'Midnight, rain hammering the hillside. A lit passenger train circles the valley below you. Ghost has the rifle on its bipod in the mud next to you. He only gets a few seconds per pass.',
     name: 'The Midnight Express',
     codename: 'OPERATION IRON HORSE',
     difficulty: 'Expert',

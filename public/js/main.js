@@ -1,5 +1,6 @@
 import { LEVELS } from './levels.js';
-import { World, scoreShot, PASS_SCORE, HINT_CAP } from './world.js';
+import { generateLevel } from './endless.js';
+import { World, scoreShot, PASS_SCORE, HINT_CAP, WOUNDED_ESCAPE_CAP, FOLLOW_UP_FACTOR } from './world.js';
 import { Sniper } from './sniper.js';
 import { Renderer, drawPortrait } from './render.js';
 import { parseCommands, sanitizeCommands } from './commands.js';
@@ -10,22 +11,44 @@ import { milsToMeters } from './ballistics.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d);
 
+const ENDLESS_LIVES = 3;
+const FOLLOW_UP_WINDOW = 8; // seconds to land a follow-up shot on a running target
+const BOLT_CYCLE = 1.3; // seconds before Ghost can fire again
+const ZOOMS = [1, 1.6, 2.6]; // binocular magnification steps
+const NAKED_EYE_FACTOR = 2.4; // the naked eye sees this much wider than the binoculars
+
+const WEATHER_LABEL = {
+  clear: 'Clear',
+  rain: 'Rain',
+  snow: 'Snow',
+  fog: 'Fog - laser blocked',
+  heat: 'Heat haze - laser blocked',
+};
+
 // --- state ------------------------------------------------------------------------------
 const game = {
   phase: 'menu', // menu | briefing | live | flight | result | final
+  mode: 'campaign', // campaign | endless
   levelIndex: 0,
+  level: null,
   world: null,
   sniper: null,
   t: 0,
   aim: null,
-  zoom: false,
+  binoculars: true,
+  zoom: 0,
+  look: { x: 0, y: 0 },
   flight: null,
+  followUp: null, // { first, deadline, readyAt }
+  shots: 0,
   hintUsed: false,
-  results: [], // score per level this session
+  results: [], // campaign score per level this session
+  endless: null, // { seed, round, lives, score, log }
   lastBeep: null,
   flash: 0,
   services: { fishTts: false, fishStt: false, llm: false },
   speakingUntil: 0,
+  insight: {},
 };
 
 const renderer = new Renderer($('view'));
@@ -48,7 +71,7 @@ function saveBest(id, score) {
 function log(who, text) {
   const el = document.createElement('div');
   el.className = who;
-  const names = { spotter: 'YOU', sniper: 'SNIPER', target: 'INTERCEPT', system: '//' };
+  const names = { spotter: 'YOU', sniper: 'GHOST', target: 'INTERCEPT', system: '//' };
   el.innerHTML = `<span class="who">${names[who] || who}:</span>`;
   el.appendChild(document.createTextNode(text));
   const box = $('log');
@@ -77,8 +100,9 @@ function banner(text, cls = '', ms = 1800) {
 }
 
 // --- screens ------------------------------------------------------------------------------
+const MODALS = ['menuModal', 'howModal', 'briefModal', 'resultModal', 'finalModal'];
 function showModal(id) {
-  for (const m of ['menuModal', 'briefModal', 'resultModal', 'finalModal']) $(m).classList.toggle('hidden', m !== id);
+  for (const m of MODALS) $(m).classList.toggle('hidden', m !== id);
 }
 
 function renderMenu() {
@@ -89,38 +113,59 @@ function renderMenu() {
     const b = document.createElement('button');
     b.className = 'level';
     const moving = L.train ? 'moving train' : L.people.some((p) => p.isTarget && p.move) ? 'walking target' : 'stationary';
-    b.innerHTML = `<span class="n">${i + 1}</span><span><b>${L.name}</b><br><span class="meta">${L.distance} m · ${moving} · ${L.people.length - 1} civilians · ${L.timeLimit}s</span></span><span class="diff">${L.difficulty}</span><span class="best">${best[L.id] != null ? `${best[L.id]}/100` : ''}</span>`;
-    b.onclick = () => openBriefing(i);
+    b.innerHTML = `<span class="n">${i + 1}</span><span><b>${L.name}</b><br><span class="meta">${L.distance} m · ${WEATHER_LABEL[L.weather].split(' -')[0].toLowerCase()} · ${moving} · ${L.people.length - 1} civilians · ${L.timeLimit}s</span></span><span class="diff">${L.difficulty}</span><span class="best">${best[L.id] != null ? `${best[L.id]}/100` : ''}</span>`;
+    b.onclick = () => { game.mode = 'campaign'; openBriefing(LEVELS[i], i); };
     list.appendChild(b);
   });
+  const e = document.createElement('button');
+  e.className = 'level endless';
+  e.innerHTML = `<span class="n">∞</span><span><b>Endless Contracts</b><br><span class="meta">Random variations of all five missions, harder every round · ${ENDLESS_LIVES} lives</span></span><span class="diff">Survival</span><span class="best">${best.endless != null ? `best ${best.endless}` : ''}</span>`;
+  e.onclick = startEndless;
+  list.appendChild(e);
+
   const s = game.services;
-  $('services').innerHTML = `Sniper voice: ${s.fishTts ? '<b>Fish Audio</b>' : '<b class="off">browser voice</b> (set FISH_API_KEY for Fish Audio)'} · Fish STT: ${s.fishStt ? '<b>ready</b>' : '<b class="off">off</b>'} · AI interpreter: ${s.llm ? '<b>on</b>' : '<b class="off">off</b> (built-in parser)'}`;
+  $('services').innerHTML = `Sniper voice: ${s.fishTts ? '<b>Fish Audio</b>' : '<b class="off">browser voice</b> (run the server with FISH_API_KEY for Fish Audio)'} · Fish STT: ${s.fishStt ? '<b>ready</b>' : '<b class="off">off</b>'} · AI interpreter: ${s.llm ? '<b>on</b>' : '<b class="off">off</b> (built-in parser)'}`;
   game.phase = 'menu';
   showModal('menuModal');
   $('missionName').textContent = 'Select a mission';
   $('timer').textContent = '--';
+  $('livesStat').classList.add('hidden');
 }
 
-function openBriefing(i) {
+function startEndless() {
+  game.mode = 'endless';
+  game.endless = { seed: Math.floor(Math.random() * 1e9), round: 0, lives: ENDLESS_LIVES, score: 0, log: [] };
+  $('totalScore').textContent = 0;
+  openBriefing(generateLevel(0, game.endless.seed), 0);
+}
+
+function openBriefing(L, index) {
   sfx.unlock();
-  game.levelIndex = i;
-  const L = LEVELS[i];
+  game.levelIndex = index;
+  game.level = L;
   game.world = new World(L, { aspect: renderer.aspect });
   game.sniper = new Sniper(game.world);
   game.t = 0;
   game.flight = null;
+  game.followUp = null;
+  game.shots = 0;
   game.hintUsed = false;
-  game.zoom = false;
+  game.zoom = 0;
+  game.look = { x: 0, y: 0 };
+  game.binoculars = true;
   game.aim = null;
   game.aimRaw = null;
   game.lastGoal = null;
   game.lastBeep = null;
+  game.insight = {};
   game.phase = 'briefing';
   $('hintBox').classList.add('hidden');
 
+  const endless = game.mode === 'endless';
   $('briefCodename').textContent = L.codename;
-  $('briefName').textContent = `Mission ${i + 1}: ${L.name}`;
-  $('briefDiff').textContent = `${L.difficulty} · ${L.distance} m · ${L.timeLimit} s`;
+  $('briefName').textContent = endless ? L.name : `Mission ${index + 1}: ${L.name}`;
+  $('briefDiff').textContent = `${L.difficulty} · ${L.rangefinder ? `${L.distance} m` : 'range unknown'} · ${WEATHER_LABEL[L.weather]} · ${L.timeLimit} s`;
+  $('briefScene').textContent = L.scene;
   $('briefTarget').textContent = L.target.name;
   $('briefDesc').textContent = L.target.description;
   $('briefIntel').textContent = L.intel;
@@ -129,9 +174,11 @@ function openBriefing(i) {
   drawPortrait($('portraitSmall'), game.world.target.outfit);
   $('dName').textContent = L.target.name;
   $('dDesc').textContent = L.target.description;
-  $('missionName').textContent = `${i + 1}. ${L.name} · ${L.difficulty}`;
+  $('missionName').textContent = endless ? `${L.codename} · ${L.difficulty}` : `${index + 1}. ${L.name} · ${L.difficulty}`;
   $('timer').textContent = L.timeLimit;
   $('timer').classList.remove('urgent');
+  $('livesStat').classList.toggle('hidden', !endless);
+  if (endless) $('lives').textContent = '♥'.repeat(game.endless.lives) + '♡'.repeat(ENDLESS_LIVES - game.endless.lives);
   showModal('briefModal');
   updateHud(true);
 }
@@ -143,10 +190,10 @@ function startMission() {
   game.t = 0;
   showModal(null);
   $('log').innerHTML = '';
-  const L = LEVELS[game.levelIndex];
+  const L = game.level;
   log('system', `${L.codename} - find ${L.target.name}: ${L.target.description}`);
-  sniperSay('Sniper in position. Waiting on your call.');
-  setTimeout(() => game.phase === 'live' && targetSay(L.target.lines[0]), 2200);
+  sniperSay(L.rangefinder ? 'In position. Glass up, tell me what you see.' : 'In position. The laser is useless in this, you will have to range it on the glass.');
+  setTimeout(() => game.phase === 'live' && targetSay(L.target.lines[0]), 2600);
   if (voiceInput.mode === 'browser' && !voiceInput.enabled && VoiceInput.browserSupported()) voiceInput.start();
 }
 
@@ -185,11 +232,12 @@ function execute(cmds) {
   const say = [];
   let fire = false;
   for (const c of cmds) {
-    if (c.type === 'start') { if (game.phase === 'briefing') startMission(); else if (game.phase === 'menu') openBriefing(game.levelIndex); continue; }
+    if (c.type === 'start') { if (game.phase === 'briefing') startMission(); else if (game.phase === 'menu') openBriefing(LEVELS[game.levelIndex], game.levelIndex); continue; }
     if (c.type === 'next') { if (game.phase === 'result') nextMission(); continue; }
-    if (c.type === 'retry') { if (game.phase === 'result') openBriefing(game.levelIndex); continue; }
+    if (c.type === 'retry') { if (game.phase === 'result' && game.mode === 'campaign') openBriefing(game.level, game.levelIndex); continue; }
     if (c.type === 'hint') { if (game.phase === 'live') showHint(); continue; }
-    if (c.type === 'zoom') { game.zoom = c.dir === 'in'; continue; }
+    if (c.type === 'zoom') { setZoom(game.zoom + (c.dir === 'in' ? 1 : -1)); continue; }
+    if (c.type === 'binoculars') { game.binoculars = c.up; continue; }
     if (game.phase !== 'live') continue;
     const r = game.sniper.apply(c, game.t);
     if (r.say) say.push(r.say);
@@ -204,6 +252,10 @@ function execute(cmds) {
   updateHud(true);
 }
 
+function setZoom(z) {
+  game.zoom = Math.max(0, Math.min(ZOOMS.length - 1, z));
+}
+
 function showHint() {
   const w = game.world;
   const tgt = w.target;
@@ -212,11 +264,41 @@ function showHint() {
   const parts = [`Target ${tgt.label}.`, `Range ${w.distance}.`];
   parts.push(Math.abs(wind) < 0.5 ? 'No wind.' : `Wind ${fmt(Math.abs(wind))} from the ${wind < 0 ? 'right' : 'left'}.`);
   parts.push(`Temperature ${w.level.tempF}.`);
-  if (w.level.train || tgt.move) parts.push(speed > 0.05 ? `Moving at ${fmt(speed)}.` : 'Stationary (fire while he stands still).');
+  if (w.level.train || tgt.move || tgt.flee) parts.push(speed > 0.05 ? `Moving at ${fmt(speed)}.` : 'Stationary (fire while he stands still).');
+  parts.push('Go for the head.');
   parts.push(w.level.train ? 'Fire when ready.' : 'Send it.');
   game.hintUsed = true;
   $('hintBox').textContent = `Say: "${parts.join(' ')}"  (score capped at ${HINT_CAP})`;
   $('hintBox').classList.remove('hidden');
+}
+
+// --- Ghost's running commentary -----------------------------------------------------------------
+// He lies next to you and says what he notices: wind shifts, the target starting or stopping.
+function sniperInsights() {
+  const { world, sniper, insight } = game;
+  if (game.phase !== 'live' || voices.speaking) return;
+  const t = game.t;
+  const s = sniper.s;
+  if (s.windDir || s.wind === 0) {
+    const called = !s.wind ? 0 : s.windDir === 'right' ? -s.wind : s.wind;
+    const now = world.windAt(t);
+    const off = Math.abs(now - called) > 2.5;
+    if (off && !insight.windWarned && t - (insight.windAt || 0) > 6) {
+      insight.windWarned = true;
+      insight.windAt = t;
+      sniperSay(`Wind's shifted, spotter. Flags say ${Math.abs(now) < 1 ? 'almost calm' : `more like ${Math.round(Math.abs(now))} from the ${now < 0 ? 'right' : 'left'}`}.`);
+    }
+    if (!off) insight.windWarned = false;
+  }
+  const tgt = sniper.target;
+  if (tgt && tgt.car == null) {
+    const moving = Math.abs(world.personState(tgt, t).vx) > 0.05;
+    if (insight.moving !== undefined && moving !== insight.moving && t - (insight.moveAt || 0) > 2) {
+      insight.moveAt = t;
+      sniperSay(moving ? `He's moving${s.speed ? '' : ', no lead dialed'}.` : `He's stopped${s.speed ? ', I still have lead on' : ''}.`);
+    }
+    insight.moving = moving;
+  }
 }
 
 // --- shooting -----------------------------------------------------------------------------
@@ -225,7 +307,13 @@ function fireShot() {
   const { world, sniper } = game;
   const tgt = sniper.target;
   if (!tgt) { sniperSay('No target. Give me a number.'); return; }
+  if (game.followUp && game.t < game.followUp.readyAt) {
+    sniper.s.fireWhenReady = true;
+    sniperSay('Chambering. Firing when ready.');
+    return;
+  }
   if (!world.isVisible(tgt, game.t)) { sniperSay("No shot, I can't see him."); return; }
+  if (!sniper.s.range && game.shots === 0) log('sniper', 'No range called, holding my 100 meter zero.');
   const aim = game.aim || sniper.aimPoint(game.t);
   const imp = sniper.impact(aim, game.t);
   game.flight = {
@@ -238,6 +326,7 @@ function fireShot() {
     calls: { ...sniper.s },
     designated: tgt,
   };
+  game.shots++;
   sniper.s.fireWhenReady = false;
   game.phase = 'flight';
   game.flash = 0.55;
@@ -246,64 +335,112 @@ function fireShot() {
   log('sniper', 'Sending.');
 }
 
+/** Civilians scatter away from the shot. */
+function panic(x) {
+  const { world } = game;
+  for (const p of world.people) {
+    if (p.isTarget || p.car != null || p.fallenAt != null || p.flee) continue;
+    const s = world.personState(p, game.t);
+    p.flee = { t0: game.t, x: s.x, dir: s.x >= x ? 1 : -1, speed: 2.5 + Math.random() };
+    p.move = null;
+  }
+}
+
 function resolveImpact() {
   const { world, flight } = game;
   const tHit = flight.t0 + flight.tof;
   const hit = world.hitTest(flight.x, flight.y, tHit);
   const result = scoreShot(hit, flight, world, tHit);
-  if (game.hintUsed) result.score = Math.min(result.score, HINT_CAP);
   sfx.impact();
   renderer.addEffect(hit.kind === 'person' ? 'blood' : 'dust', flight.x, flight.y, game.t);
   const tgt = world.target;
-  if (hit.kind === 'person' && (result.eliminated || result.casualty)) {
+  // Anything but a headshot might not drop him.
+  const killed = result.eliminated && Math.random() < (result.lethal ?? 1);
+  if (hit.kind === 'person' && (killed || !hit.person.isTarget)) {
     hit.person.fallenAt = game.t;
     hit.person.fallSide = Math.random() < 0.5 ? -1 : 1;
   }
-  if (!result.eliminated && tgt.car == null) {
-    const s = world.personState(tgt, game.t);
-    tgt.flee = { t0: game.t, x: s.x, dir: s.x >= world.level.camera.x ? 1 : -1 };
-    tgt.move = null;
-  }
+  panic(flight.x);
+  const followUp = game.followUp;
+
   if (result.casualty) {
     banner('CIVILIAN DOWN', 'bad', 2200);
     sniperSay('Civilian down! That was not our guy.');
     setTimeout(() => targetSay('Sniper! Get me out of here!'), 900);
-  } else if (result.eliminated) {
+    return finish({ ...result, score: 0 }, hit);
+  }
+  if (killed) {
     banner(result.score >= 100 ? 'HEADSHOT' : 'TARGET DOWN', 'good', 2200);
     sniperSay(result.score >= 100 ? 'Headshot. Target down.' : 'Hit. Target is down.');
-  } else if (hit.kind === 'person') {
-    banner('WOUNDED', 'bad', 2200);
-    sniperSay(`Hit ${hit.part === 'arm' ? 'in the arm' : 'in the leg'}. He's running.`);
-    setTimeout(() => targetSay("I'm hit! Go, go, go!"), 900);
-  } else {
-    banner('MISS', 'bad', 2200);
-    sniperSay(hit.kind === 'train' ? 'Hit the train. Miss.' : 'Miss. Target is running.');
-    setTimeout(() => targetSay('Sniper! Move!'), 900);
+    const score = followUp ? Math.max(followUp.first.score, Math.round(result.score * FOLLOW_UP_FACTOR)) : result.score;
+    return finish({ ...result, score, verdict: followUp ? `Follow-up: ${result.verdict}` : result.verdict }, hit);
   }
+
+  // He is still up. First shot: he runs and you get one follow-up. Second shot: he's gone.
+  const wounded = hit.kind === 'person';
+  const first = {
+    ...result,
+    score: wounded ? Math.min(result.score, WOUNDED_ESCAPE_CAP) : 0,
+    verdict: wounded && result.eliminated ? `${result.verdict.split(' - ')[0]} - he survived and escaped` : result.verdict,
+  };
+  if (followUp) {
+    banner('TARGET ESCAPED', 'bad', 2200);
+    sniperSay(wounded ? "Hit him again, but he's still going. He's gone." : "Missed again. He's gone.");
+    return finish({ ...followUp.first, verdict: `${followUp.first.verdict} (follow-up ${wounded ? 'did not drop him' : 'missed'})` }, hit);
+  }
+  if (tgt.car == null) {
+    const s = world.personState(tgt, game.t);
+    tgt.flee = { t0: game.t, x: s.x, dir: s.x >= world.level.camera.x ? 1 : -1, speed: wounded ? 1.8 : 2.6 };
+    tgt.move = null;
+  }
+  game.followUp = { first, deadline: game.t + FOLLOW_UP_WINDOW, readyAt: game.t + BOLT_CYCLE };
+  const sp = Math.abs(world.personState(tgt, game.t).vx);
+  const dir = tgt.flee ? (tgt.flee.dir > 0 ? ' right' : ' left') : '';
+  banner(wounded ? "HE'S HIT - STILL MOVING" : 'MISS - TARGET RUNNING', 'bad', 2200);
+  sniperSay(wounded
+    ? `He's hit but still up! Running${dir}, about ${fmt(sp, 0)} meters a second. Give me a follow-up!`
+    : `Miss! He's running${dir}, about ${fmt(sp, 0)} meters a second. Call it!`);
+  setTimeout(() => targetSay(wounded ? "I'm hit! Go, go, go!" : 'Sniper! Move!'), 1200);
+  game.sniper.s.speed = 0; // the old lead no longer applies
+  game.phase = 'live';
+}
+
+function finish(result, hit) {
   game.phase = 'result';
+  if (game.hintUsed) result.score = Math.min(result.score, HINT_CAP);
   setTimeout(() => showResult(result, hit), 2300);
 }
 
-function timeUp() {
-  game.phase = 'result';
+function timeUp(reason) {
   banner('TARGET ESCAPED', 'bad', 2200);
-  sniperSay("Out of time. He's gone.");
-  setTimeout(() => showResult({ score: 0, verdict: 'Out of time - the target escaped', eliminated: false, casualty: false }, null), 1800);
+  sniperSay(reason);
+  const first = game.followUp?.first;
+  finish(first ? { ...first, verdict: `${first.verdict} - no follow-up in time` } : { score: 0, verdict: 'Out of time - the target escaped', eliminated: false, casualty: false }, null);
 }
 
 function showResult(result, hit) {
-  const L = LEVELS[game.levelIndex];
+  const L = game.level;
   const { world, flight } = game;
-  game.results[game.levelIndex] = Math.max(game.results[game.levelIndex] || 0, result.score);
-  saveBest(L.id, result.score);
-  $('totalScore').textContent = game.results.reduce((a, b) => a + (b || 0), 0);
   const passed = result.score >= PASS_SCORE && !result.casualty;
+  const endless = game.mode === 'endless';
+  if (endless) {
+    const e = game.endless;
+    e.score += result.score;
+    e.log.push({ name: L.name, score: result.score });
+    if (!passed) e.lives--;
+    $('totalScore').textContent = e.score;
+    $('lives').textContent = '♥'.repeat(Math.max(0, e.lives)) + '♡'.repeat(ENDLESS_LIVES - Math.max(0, e.lives));
+  } else {
+    game.results[game.levelIndex] = Math.max(game.results[game.levelIndex] || 0, result.score);
+    saveBest(L.id, result.score);
+    $('totalScore').textContent = game.results.reduce((a, b) => a + (b || 0), 0);
+  }
   if (passed) sfx.success(); else sfx.fail();
 
   const sc = $('resScore');
   sc.textContent = result.score;
   sc.className = `score-big ${result.score >= PASS_SCORE ? '' : result.score >= 40 ? 'mid' : 'bad'}`;
-  $('resKicker').textContent = passed ? 'MISSION SUCCESS' : 'MISSION FAILED';
+  $('resKicker').textContent = passed ? 'MISSION SUCCESS' : endless ? `MISSION FAILED · ${Math.max(0, game.endless.lives)} ${game.endless.lives === 1 ? 'life' : 'lives'} left` : 'MISSION FAILED';
   $('resVerdict').textContent = result.verdict + (game.hintUsed ? ' (hint used)' : '');
 
   const rows = [];
@@ -325,45 +462,72 @@ function showResult(result, hit) {
     row('Range', c.range ? `${c.range} m` : '— (100 m zero)', `${L.distance} m`, rangeOk);
     row('Wind', c.wind ? `${fmt(c.wind)} mph from ${c.windDir}` : 'none', windAbs < 0.5 ? 'calm' : `${fmt(windAbs)} mph from ${windDir}`, windOk);
     row('Temperature', c.tempF != null ? `${c.tempF}°F` : '— (59°F std)', `${L.tempF}°F`, tempOk);
-    if (L.train || L.people.some((p) => p.isTarget && p.move)) row('Target speed', c.speed ? `${fmt(c.speed)} m/s` : '0', `${fmt(speed)} m/s`, speedOk);
+    if (L.train || speed > 0.05 || c.speed) row('Target speed', c.speed ? `${fmt(c.speed)} m/s` : '0', `${fmt(speed)} m/s`, speedOk);
     if (c.adjV || c.adjH) rows.push(`<tr><td>Corrections</td><td colspan="3">${fmt(c.adjV)} mils vertical, ${fmt(c.adjH)} mils horizontal</td></tr>`);
-    // Where it landed relative to the intended aim point (target's chest/head at impact time).
     const ideal = world.aimPoint(flight.designated, flight.t0 + flight.tof, c.part);
     const dx = flight.x - ideal.x;
     const dy = flight.y - ideal.y;
     const desc = `${fmt(Math.abs(dy) * 100, 0)} cm ${dy >= 0 ? 'high' : 'low'}, ${fmt(Math.abs(dx) * 100, 0)} cm ${dx >= 0 ? 'right' : 'left'}`;
-    rows.push(`<tr><td>Impact</td><td colspan="3">${desc} of the ${c.part} (${fmt(Math.hypot(dx, dy) * 1000 / L.distance, 2)} mils)${hit && hit.kind === 'person' ? ` · hit ${hit.part}` : ''}</td></tr>`);
+    rows.push(`<tr><td>${game.shots > 1 ? 'Last impact' : 'Impact'}</td><td colspan="3">${desc} of the ${c.part} (${fmt(Math.hypot(dx, dy) * 1000 / L.distance, 2)} mils)${hit && hit.kind === 'person' ? ` · hit ${hit.part}` : ''}</td></tr>`);
+    rows.push(`<tr><td>Shots</td><td colspan="3">${game.shots}</td></tr>`);
 
-    if (!targetOk) tip = 'Wrong person! Compare every number tag with the dossier (tie color, sunglasses) before calling the target.';
+    if (!targetOk) tip = 'Wrong person! Compare every number tag with the dossier (tie color, glasses, hat) before calling the target. Ghost tells you who he is on - listen.';
     else if (!c.range) tip = `You never called the range. The rifle is zeroed at 100 m, so at ${L.distance} m the bullet drops far below the aim point. Say "Range ${L.distance}".`;
-    else if (!rangeOk) tip = `Range was off. ${L.rangefinder ? 'Read it from the rangefinder.' : 'Use the grid: range = size in meters x 1000 / size in mils.'}`;
+    else if (!rangeOk) tip = `Range was off. ${L.rangefinder ? 'Read it from the rangefinder.' : 'Measure on the binocular scale: range = size in meters x 1000 / size in mils (a person is about 1.75 m).'}`;
     else if (!windOk) tip = `Wind call was off: wind from the ${windDir} pushes the bullet to the ${windDir === 'right' ? 'left' : 'right'}. Read the meter just before you fire - it gusts.`;
     else if (!tempOk) tip = `Temperature matters: ${L.tempF < 59 ? 'cold, dense air adds drop' : 'hot, thin air reduces drop'}. Say "Temperature ${L.tempF}".`;
-    else if (!speedOk) tip = speed > 0.05 ? `He was moving at ${fmt(speed)} m/s. Call "Moving at ${fmt(speed)}" so the sniper leads him, or wait until he stops.` : 'He had stopped, but you called a lead. Say "Stationary" when he stands still.';
-    else if (result.score >= 95) tip = 'Textbook call. The sniper owes you a drink.';
+    else if (!speedOk) tip = speed > 0.05 ? `He was moving at ${fmt(speed)} m/s. Call "Moving at ${fmt(speed)}" so Ghost leads him, or wait until he stops.` : 'He had stopped, but you called a lead. Say "Stationary" when he stands still.';
+    else if (result.score >= 95) tip = 'Textbook call. Ghost owes you a drink.';
+    else if (hit && hit.kind === 'person' && hit.part !== 'head') tip = 'Good call - but only a headshot is a guaranteed kill. Say "go for the head" so he cannot get away.';
     else tip = 'Good call. For the perfect 100 say "go for the head".';
   } else {
-    tip = 'Give the sniper the full call faster: target number, range, wind, then "Send it".';
+    tip = 'Give Ghost the full call faster: target number, range, wind, temperature, then "Send it".';
   }
   $('resTable').innerHTML = rows.length ? `<tr><th></th><th>You called</th><th>Actual</th><th></th></tr>${rows.join('')}` : '';
   $('resTip').textContent = tip;
-  const last = game.levelIndex >= LEVELS.length - 1;
-  $('nextBtn').textContent = last ? 'FINISH CAMPAIGN' : passed ? 'NEXT MISSION' : 'SKIP TO NEXT';
+
+  if (endless) {
+    const over = game.endless.lives <= 0;
+    $('retryBtn').classList.add('hidden');
+    $('nextBtn').textContent = over ? 'SEE FINAL SCORE' : 'NEXT CONTRACT';
+  } else {
+    $('retryBtn').classList.remove('hidden');
+    const last = game.levelIndex >= LEVELS.length - 1;
+    $('nextBtn').textContent = last ? 'FINISH CAMPAIGN' : passed ? 'NEXT MISSION' : 'SKIP TO NEXT';
+  }
   showModal('resultModal');
 }
 
 function nextMission() {
+  if (game.mode === 'endless') {
+    const e = game.endless;
+    if (e.lives <= 0) return showFinal();
+    e.round++;
+    return openBriefing(generateLevel(e.round, e.seed), e.round);
+  }
   if (game.levelIndex >= LEVELS.length - 1) return showFinal();
-  openBriefing(game.levelIndex + 1);
+  openBriefing(LEVELS[game.levelIndex + 1], game.levelIndex + 1);
 }
 
 function showFinal() {
   game.phase = 'final';
-  const total = LEVELS.reduce((a, _, i) => a + (game.results[i] || 0), 0);
-  $('finalScore').textContent = `${total}`;
-  const rank = total >= 470 ? 'Legendary Spotter' : total >= 400 ? 'Elite Spotter' : total >= 300 ? 'Marksman' : total >= 150 ? 'Field Agent' : 'Rookie';
-  $('finalRank').textContent = `${rank} · ${total} / ${LEVELS.length * 100}`;
-  $('finalTable').innerHTML = LEVELS.map((L, i) => `<tr><td>${i + 1}. ${L.name}</td><td>${game.results[i] ?? '—'}</td></tr>`).join('');
+  if (game.mode === 'endless') {
+    const e = game.endless;
+    saveBest('endless', e.score);
+    const done = e.log.filter((r) => r.score >= PASS_SCORE).length;
+    $('finalKicker').textContent = 'OUT OF LIVES';
+    $('finalScore').textContent = `${e.score}`;
+    const rank = done >= 15 ? 'Legendary Spotter' : done >= 10 ? 'Elite Spotter' : done >= 6 ? 'Marksman' : done >= 3 ? 'Field Agent' : 'Rookie';
+    $('finalRank').textContent = `${rank} · ${done} contract${done === 1 ? '' : 's'} completed`;
+    $('finalTable').innerHTML = e.log.map((r) => `<tr><td>${r.name}</td><td class="${r.score >= PASS_SCORE ? 'ok' : 'bad'}">${r.score}</td></tr>`).join('');
+  } else {
+    const total = LEVELS.reduce((a, _, i) => a + (game.results[i] || 0), 0);
+    $('finalKicker').textContent = 'CAMPAIGN COMPLETE';
+    $('finalScore').textContent = `${total}`;
+    const rank = total >= 470 ? 'Legendary Spotter' : total >= 400 ? 'Elite Spotter' : total >= 300 ? 'Marksman' : total >= 150 ? 'Field Agent' : 'Rookie';
+    $('finalRank').textContent = `${rank} · ${total} / ${LEVELS.length * 100}`;
+    $('finalTable').innerHTML = LEVELS.map((L, i) => `<tr><td>${i + 1}. ${L.name}</td><td>${game.results[i] ?? '—'}</td></tr>`).join('');
+  }
   showModal('finalModal');
 }
 
@@ -378,10 +542,11 @@ function updateHud(force = false) {
   const D = world.distance;
   const rng = $('dRange');
   if (L.rangefinder) { rng.textContent = `${D} m`; rng.className = ''; }
-  else { rng.textContent = 'OFFLINE - estimate'; rng.className = 'offline'; }
+  else { rng.textContent = 'NO RETURN - estimate'; rng.className = 'offline'; }
   const w = world.windAt(game.t);
   $('dWind').textContent = Math.abs(w) < 0.5 ? 'calm' : `${w < 0 ? '←' : '→'} ${fmt(Math.abs(w))} mph (from ${w < 0 ? 'R' : 'L'})`;
   $('dTemp').textContent = `${L.tempF}°F`;
+  $('dWeather').textContent = WEATHER_LABEL[L.weather] || L.weather;
   $('dIntel').textContent = L.intel;
 
   const s = sniper.s;
@@ -398,16 +563,17 @@ function updateHud(force = false) {
     '<span>Hold</span>', `<span class="hold">${h.elevation >= 0 ? '↑' : '↓'} ${fmt(Math.abs(h.elevation))}  ${h.windage >= 0 ? '→' : '←'} ${fmt(Math.abs(h.windage))} mils</span>`,
   ].join('');
   const tag = $('sReady');
-  tag.textContent = s.fireWhenReady ? 'FIRE WHEN READY' : s.targetLabel != null ? 'ON TARGET' : '';
-  tag.className = `tag ${s.fireWhenReady ? 'armed' : ''}`;
+  tag.textContent = game.followUp ? 'FOLLOW-UP!' : s.fireWhenReady ? 'FIRE WHEN READY' : s.targetLabel != null ? 'ON TARGET' : '';
+  tag.className = `tag ${s.fireWhenReady || game.followUp ? 'armed' : ''}`;
   if (game.phase === 'live') {
-    const left = Math.max(0, L.timeLimit - game.t);
+    const left = game.followUp ? Math.max(0, game.followUp.deadline - game.t) : Math.max(0, L.timeLimit - game.t);
     $('timer').textContent = Math.ceil(left);
     $('timer').classList.toggle('urgent', left <= 10);
   }
 }
 
 // --- main loop ----------------------------------------------------------------------------
+const keys = {};
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -419,15 +585,17 @@ function frame(now) {
     const D = world.distance;
 
     if (game.phase === 'live') {
-      const left = L.timeLimit - game.t;
-      if (left <= 0) timeUp();
+      const fu = game.followUp;
+      const left = fu ? fu.deadline - game.t : L.timeLimit - game.t;
+      if (left <= 0) timeUp(fu ? "He's out of sight. Gone." : "Out of time. He's gone.");
+      else if (fu && world.target.flee && !world.isVisible(world.target, game.t)) timeUp("He's out of sight. Gone.");
       else if (left <= 10 && Math.ceil(left) !== game.lastBeep) { game.lastBeep = Math.ceil(left); sfx.beep(left <= 3); }
+      if (game.phase === 'live' && Math.floor(game.t * 2) !== Math.floor((game.t - dt) * 2)) sniperInsights();
     }
     if (game.phase !== 'menu') sfx.setWind(world.windAt(game.t));
 
-    // The rifle swings smoothly onto the commanded aim point, with a little breathing sway.
+    // The rifle tracks the commanded aim point, easing out of jumps, with a little breathing sway.
     const goal = sniper.aimPoint(game.t);
-    // Track the goal exactly, but ease out of any jump (new target or new hold).
     const sway = milsToMeters(0.03, D);
     if (!game.aimRaw) game.aimOffset = { x: 0, y: 0 };
     else game.aimOffset = { x: game.aimRaw.x - (game.lastGoal?.x ?? goal.x), y: game.aimRaw.y - (game.lastGoal?.y ?? goal.y) };
@@ -439,27 +607,38 @@ function frame(now) {
     if (game.phase === 'live' && sniper.s.fireWhenReady && sniper.target) {
       const tgt = sniper.target;
       const settled = Math.hypot(goal.x - game.aimRaw.x, goal.y - game.aimRaw.y) < milsToMeters(0.08, D);
-      if (settled && world.isVisible(tgt, game.t, world.viewHalfWidth() * 0.45)) fireShot();
+      const ready = !game.followUp || game.t >= game.followUp.readyAt;
+      const margin = game.followUp ? 0 : world.viewHalfWidth() * 0.45;
+      if (ready && settled && world.isVisible(tgt, game.t, margin)) fireShot();
     }
     if (game.phase === 'flight' && game.t >= game.flight.t0 + game.flight.tof) resolveImpact();
 
-    // Camera: wide spotter view, or zoomed on the designated target.
-    let view = { cx: L.camera.x, cy: L.camera.y, mils: L.viewMils };
-    if (game.zoom) {
-      const tgt = sniper.target;
-      const p = tgt ? world.aimPoint(tgt, game.t, 'chest') : game.aim;
-      view = { cx: p.x, cy: p.y, mils: L.viewMils / 2.5 };
-    }
+    // Arrow keys look around through the binoculars.
+    const viewW = (L.viewMils * D) / 1000;
+    const pan = (viewW * 0.5 * dt) / ZOOMS[game.zoom];
+    if (keys.ArrowLeft) game.look.x -= pan;
+    if (keys.ArrowRight) game.look.x += pan;
+    if (keys.ArrowUp) game.look.y += pan;
+    if (keys.ArrowDown) game.look.y -= pan;
+    game.look.x = Math.max(-viewW * 0.6, Math.min(viewW * 0.6, game.look.x));
+    game.look.y = Math.max(-viewW * 0.3, Math.min(viewW * 0.3, game.look.y));
+
+    const view = game.binoculars
+      ? { cx: L.camera.x + game.look.x, cy: L.camera.y + game.look.y, mils: L.viewMils / ZOOMS[game.zoom] }
+      // Naked eye: wider, framed so the scene sits above the ridge you're lying on.
+      : { cx: L.camera.x, cy: L.camera.y - 2 + 0.2 * renderer.aspect * viewW * NAKED_EYE_FACTOR, mils: L.viewMils * NAKED_EYE_FACTOR };
+    game.view = view;
     game.flash = Math.max(0, game.flash - dt * 2);
     renderer.draw(world, {
       t: game.t,
       view,
+      binoculars: game.binoculars,
       aim: ['live', 'flight'].includes(game.phase) ? game.aim : null,
-      aimLabel: sniper.target ? `SNIPER → #${sniper.target.label}` : 'SNIPER',
+      aimLabel: sniper.target ? `GHOST → #${sniper.target.label}` : 'GHOST',
       showScope: ['live', 'flight', 'result'].includes(game.phase),
-      labels: true,
       flight: game.phase === 'flight' ? game.flight : null,
       flash: game.flash,
+      showDistance: L.rangefinder,
     });
     updateHud();
   } else {
@@ -507,24 +686,51 @@ $('typeForm').addEventListener('submit', (e) => {
   sfx.unlock();
   const v = $('typeInput').value;
   $('typeInput').value = '';
+  $('typeInput').blur(); // give the keyboard shortcuts (B, F, arrows) back
   handleUtterance(v, { typed: true });
 });
 $('fireBtn').onclick = () => { sfx.unlock(); execute([{ type: 'fire' }]); };
+$('binoBtn').onclick = () => { game.binoculars = !game.binoculars; };
 $('hintBtn').onclick = () => game.phase === 'live' && showHint();
 $('startBtn').onclick = startMission;
-$('retryBtn').onclick = () => openBriefing(game.levelIndex);
+$('retryBtn').onclick = () => openBriefing(game.level, game.levelIndex);
 $('nextBtn').onclick = nextMission;
 $('finalMenuBtn').onclick = renderMenu;
+$('howBtn').onclick = () => { game.howReturn = 'menuModal'; showModal('howModal'); };
+$('howBtnTop').onclick = () => {
+  if (game.phase === 'live' || game.phase === 'flight') return; // don't cover a live mission
+  game.howReturn = MODALS.find((m) => !$(m).classList.contains('hidden')) || 'menuModal';
+  showModal('howModal');
+};
+$('howClose').onclick = () => showModal(game.howReturn || 'menuModal');
 $('menuBtn').onclick = () => { voices.stopAll(); sfx.stopWind(); game.world = null; renderMenu(); };
+
+// Drag to look around through the binoculars, scroll to zoom, double-click to re-center.
+const canvas = $('view');
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', (e) => {
+  if (!drag || !game.world || !game.binoculars || !game.view) return;
+  const ppm = renderer.w / ((game.view.mils * game.world.distance) / 1000);
+  game.look.x -= (e.clientX - drag.x) / ppm;
+  game.look.y += (e.clientY - drag.y) / ppm;
+  drag = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); setZoom(game.zoom + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
+canvas.addEventListener('dblclick', () => { game.look = { x: 0, y: 0 }; });
 
 window.addEventListener('keydown', (e) => {
   const typing = document.activeElement === $('typeInput');
   if (typing) { if (e.key === 'Escape') $('typeInput').blur(); return; }
   if (e.code === 'Space' && voiceInput.mode === 'fish') { e.preventDefault(); if (!e.repeat) voiceInput.pttDown(); return; }
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { keys[e.key] = true; e.preventDefault(); }
   if (e.key === 'm' || e.key === 'M') { sfx.unlock(); if (voiceInput.mode === 'browser') voiceInput.toggle(); }
   if (e.key === 'f' || e.key === 'F') execute([{ type: 'fire' }]);
   if (e.key === 'h' || e.key === 'H') game.phase === 'live' && showHint();
-  if (e.key === 'z' || e.key === 'Z') game.zoom = !game.zoom;
+  if (e.key === 'b' || e.key === 'B') game.binoculars = !game.binoculars;
+  if (e.key === 'z' || e.key === 'Z') setZoom((game.zoom + 1) % ZOOMS.length);
+  if (e.key === 'c' || e.key === 'C') game.look = { x: 0, y: 0 };
   if (e.key === 'Enter') {
     if (game.phase === 'briefing') startMission();
     else if (game.phase === 'result' && !$('resultModal').classList.contains('hidden')) nextMission();
@@ -533,6 +739,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === '/' || e.key === 't') { e.preventDefault(); $('typeInput').focus(); }
 });
 window.addEventListener('keyup', (e) => {
+  keys[e.key] = false;
   if (e.code === 'Space' && voiceInput.mode === 'fish') voiceInput.pttUp();
 });
 window.addEventListener('resize', () => {
@@ -544,7 +751,7 @@ window.addEventListener('resize', () => {
 async function boot() {
   try {
     const res = await fetch('/api/config');
-    if (res.ok) game.services = await res.json();
+    if (res.ok && (res.headers.get('content-type') || '').includes('json')) game.services = await res.json();
   } catch { /* opened without the server: browser-only mode */ }
   voices.useFish = !!game.services.fishTts;
   if (!VoiceInput.browserSupported()) {
@@ -555,3 +762,6 @@ async function boot() {
   requestAnimationFrame(frame);
 }
 boot();
+
+// Exposed for automated play-testing.
+window.__spotter = { game };

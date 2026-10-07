@@ -29,3 +29,8 @@ test('sanitizeCommands drops unknown or malformed commands and orders fire last'
   const out = sanitizeCommands([{ type: 'fire' }, { type: 'rm -rf' }, { type: 'range', value: '600' }, { type: 'target', id: 'x' }]);
   assert.deepEqual(out, [{ type: 'range', value: 600 }, { type: 'fire' }]);
 });
+
+test('binocular commands', () => {
+  assert.deepEqual(parseCommands('lower the binoculars'), [{ type: 'binoculars', up: false }]);
+  assert.deepEqual(parseCommands('binoculars up'), [{ type: 'binoculars', up: true }]);
+});

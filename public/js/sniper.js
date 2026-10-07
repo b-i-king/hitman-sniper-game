@@ -2,6 +2,7 @@
 // designated target, and works out where the bullet really lands (true physics vs. the
 // values the spotter called).
 
+import { describeOutfit } from './world.js';
 import { firingSolution, impactOffsetY, windDriftMeters, timeOfFlight, milsToMeters, STD_TEMP_F } from './ballistics.js';
 
 const fmt = (n) => (Math.round(n * 10) / 10).toString();
@@ -74,7 +75,9 @@ export class Sniper {
         const p = this.world.byLabel(cmd.id);
         if (!p) return { say: `I don't see a number ${cmd.id}.` };
         s.targetLabel = cmd.id;
-        return { say: `Target ${cmd.id}, I'm on him.` };
+        // Describe what he sees so the spotter can double-check the ID.
+        const seen = describeOutfit(p.outfit);
+        return { say: `Number ${cmd.id}, I'm on him. ${seen[0].toUpperCase()}${seen.slice(1)}.` };
       }
       case 'aim':
         s.part = cmd.part;

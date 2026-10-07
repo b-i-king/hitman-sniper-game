@@ -1,5 +1,5 @@
-// Canvas renderer: the spotter's scope (wide view with a mil grid) and the sniper's scope
-// inset. Everything is drawn in world meters through a camera transform.
+// Canvas renderer: the spotter's binocular view (or naked-eye view with Ghost beside you),
+// weather, and the sniper's rifle-scope inset. Everything is drawn in world meters through a camera transform.
 
 import { BODY } from './world.js';
 
@@ -8,6 +8,8 @@ const SKIES = {
   winter: ['#9fb3c4', '#e3ebf1'],
   dusk: ['#2c2350', '#c4566a', '#f2a65a'],
   night: ['#050814', '#101a33'],
+  fog: ['#b9bfc4', '#d5d9dc'],
+  overcast: ['#6f7a85', '#a9b2ba'],
 };
 
 export class Renderer {
@@ -49,38 +51,59 @@ export class Renderer {
 
   // --- main entry -----------------------------------------------------------------
   /**
-   * opts: { t, view: {cx, cy, mils}, aim, sniperZoom, labels, flight, flash, haze }
+   * opts: { t, view: {cx, cy, mils}, binoculars, aim, aimLabel, showScope, flight, flash, showDistance }
    */
   draw(world, opts) {
     const c = this.ctx;
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const D = world.distance;
     const viewW = (opts.view.mils * D) / 1000;
+    const L = world.level;
+    const t = opts.t;
 
-    // Spotter view
+    // What the spotter sees: through the binoculars, or with the naked eye.
     this.setCamera(opts.view.cx, opts.view.cy, viewW, this.w, this.h);
-    this.drawScene(world, opts.t, { labels: opts.labels });
-    this.drawEffects(opts.t);
-    if (opts.flight) this.drawTrace(opts.flight, opts.t);
-    if (world.level.snow) this.drawSnow(world.windAt(opts.t), opts.t);
-    this.drawMilGrid(D, opts.view.mils);
-    this.drawSpotterVignette();
-    if (opts.aim) this.drawSniperMarker(opts.aim, opts.aimLabel);
+    this.drawScene(world, t);
+    this.drawEffects(t);
+    if (opts.flight) this.drawTrace(opts.flight, t);
+    this.drawWeather(world, t, this.w, this.h, 0, 0, true);
+    if (opts.binoculars) {
+      if (L.sky === 'night') this.nightVision(0, 0, this.w, this.h);
+      this.drawLabels(world, t);
+      this.drawMilGrid(D, opts.view.mils);
+      if (opts.aim) this.drawSniperMarker(opts.aim, opts.aimLabel);
+      this.drawBinocularReticle(opts.view.mils);
+      this.drawBinocularMask();
+      c.fillStyle = 'rgba(200,255,200,0.75)';
+      c.font = '12px ui-monospace, Menlo, monospace';
+      c.textAlign = 'left';
+      c.textBaseline = 'bottom';
+      c.fillText(`BINOCULARS  ·  scale = mils${opts.showDistance ? `  (1 mil = ${(D / 1000).toFixed(2)} m at ${D} m)` : ''}`, 12, this.h - 10);
+      c.fillText('drag / arrows: look  ·  scroll: zoom  ·  B: lower', 12, this.h - 26);
+    } else {
+      this.drawForeground(L, t);
+      c.fillStyle = 'rgba(255,255,255,0.8)';
+      c.font = '13px ui-monospace, Menlo, monospace';
+      c.textAlign = 'center';
+      c.textBaseline = 'top';
+      c.fillText('Binoculars down - press B or say "binoculars up" to spot', this.w / 2, 12);
+    }
 
-    // Sniper scope inset
+    // Ghost's rifle scope, bottom-right
     if (opts.aim && opts.showScope) {
-      const r = Math.min(this.w, this.h) * 0.2;
-      const ox = this.w - r - 18;
-      const oy = this.h - r - 18;
+      const r = Math.min(this.w, this.h) * 0.17;
+      const ox = this.w - r - 16;
+      const oy = this.h - r - 16;
       c.save();
       c.beginPath();
       c.arc(ox, oy, r, 0, Math.PI * 2);
       c.clip();
-      const scopeMils = Math.max(3, opts.view.mils / 6);
+      const scopeMils = Math.max(3, L.viewMils / 6);
       this.setCamera(opts.aim.x, opts.aim.y, (scopeMils * D) / 1000, r * 2, r * 2, ox - r, oy - r);
-      this.drawScene(world, opts.t, { labels: false });
-      this.drawEffects(opts.t);
-      if (world.level.snow) this.drawSnow(world.windAt(opts.t), opts.t, r * 2, ox - r, oy - r);
+      this.drawScene(world, t);
+      this.drawEffects(t);
+      this.drawWeather(world, t, r * 2, r * 2, ox - r, oy - r, false);
+      if (L.sky === 'night') this.nightVision(ox - r, oy - r, r * 2, r * 2);
       this.drawScopeReticle(ox, oy, r, r / (scopeMils / 2));
       c.restore();
       c.strokeStyle = '#000';
@@ -93,10 +116,11 @@ export class Renderer {
       c.beginPath();
       c.arc(ox, oy, r + 9, 0, Math.PI * 2);
       c.stroke();
-      c.fillStyle = 'rgba(255,255,255,0.75)';
+      c.fillStyle = 'rgba(255,255,255,0.8)';
       c.font = '600 11px ui-monospace, Menlo, monospace';
       c.textAlign = 'center';
-      c.fillText("SNIPER'S SCOPE", ox, oy - r - 14);
+      c.textBaseline = 'alphabetic';
+      c.fillText("GHOST'S RIFLE SCOPE", ox, oy - r - 14);
     }
 
     if (opts.flash) {
@@ -106,8 +130,221 @@ export class Renderer {
     }
   }
 
+  // --- binoculars ----------------------------------------------------------------------
+  /** Black mask with two overlapping round lenses (cached per canvas size). */
+  drawBinocularMask() {
+    const key = `${this.w}x${this.h}`;
+    if (this.maskKey !== key) {
+      this.maskKey = key;
+      const m = document.createElement('canvas');
+      m.width = Math.round(this.w * this.dpr);
+      m.height = Math.round(this.h * this.dpr);
+      const c = m.getContext('2d');
+      c.scale(this.dpr, this.dpr);
+      c.fillStyle = '#000';
+      c.fillRect(0, 0, this.w, this.h);
+      const r = Math.min(this.h * 0.49, this.w * 0.3);
+      const cy = this.h / 2;
+      const lenses = [this.w / 2 - r * 0.62, this.w / 2 + r * 0.62];
+      c.globalCompositeOperation = 'destination-out';
+      for (const cx of lenses) {
+        const g = c.createRadialGradient(cx, cy, r * 0.82, cx, cy, r);
+        g.addColorStop(0, 'rgba(0,0,0,1)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = g;
+        c.beginPath();
+        c.arc(cx, cy, r, 0, Math.PI * 2);
+        c.fill();
+      }
+      // The inner part of each lens is fully clear.
+      c.fillStyle = '#000';
+      for (const cx of lenses) {
+        c.beginPath();
+        c.arc(cx, cy, r * 0.83, 0, Math.PI * 2);
+        c.fill();
+      }
+      this.mask = m;
+    }
+    this.ctx.drawImage(this.mask, 0, 0, this.w, this.h);
+  }
+
+  /** Mil scale reticle in the middle of the binoculars, like an M22 / Steiner reticle. */
+  drawBinocularReticle(viewMils) {
+    const c = this.ctx;
+    const ppm = this.w / viewMils;
+    const cx = this.w / 2;
+    const cy = this.h / 2;
+    const n = 10;
+    const pass = (color, width) => {
+      c.strokeStyle = color;
+      c.lineWidth = width;
+      c.beginPath();
+      c.moveTo(cx - n * ppm, cy); c.lineTo(cx + n * ppm, cy);
+      c.moveTo(cx, cy - 5 * ppm); c.lineTo(cx, cy + n * ppm);
+      for (let i = -n; i <= n; i++) {
+        const len = i % 5 === 0 ? 9 : 4;
+        c.moveTo(cx + i * ppm, cy - len); c.lineTo(cx + i * ppm, cy + len);
+        if (i >= -5) { c.moveTo(cx - len, cy + i * ppm); c.lineTo(cx + len, cy + i * ppm); }
+      }
+      c.stroke();
+    };
+    pass('rgba(255,255,255,0.35)', 3);
+    pass('rgba(10,10,10,0.9)', 1.2);
+    c.font = '10px ui-monospace, Menlo, monospace';
+    c.fillStyle = 'rgba(10,10,10,0.9)';
+    c.textAlign = 'center';
+    c.textBaseline = 'top';
+    for (const i of [-10, -5, 5, 10]) c.fillText(String(Math.abs(i)), cx + i * ppm, cy + 11);
+    c.textAlign = 'left';
+    c.textBaseline = 'middle';
+    for (const i of [5, 10]) c.fillText(String(i), cx + 11, cy + i * ppm);
+  }
+
+  nightVision(x, y, w, h) {
+    const c = this.ctx;
+    c.save();
+    c.globalCompositeOperation = 'screen';
+    c.fillStyle = 'rgb(16,60,20)';
+    c.fillRect(x, y, w, h);
+    c.globalCompositeOperation = 'multiply';
+    c.fillStyle = 'rgb(150,255,150)';
+    c.fillRect(x, y, w, h);
+    c.restore();
+  }
+
+  // --- weather ------------------------------------------------------------------------
+  drawWeather(world, t, w, h, ox, oy, main) {
+    const L = world.level;
+    const c = this.ctx;
+    const windX = world.windAt(t);
+    if (L.snow || L.weather === 'snow') this.drawSnow(windX, t, w, ox, oy, h);
+    if (L.weather === 'rain') {
+      if (!this.rain) this.rain = Array.from({ length: 220 }, () => ({ x: Math.random(), y: Math.random(), s: 0.6 + Math.random() * 0.8 }));
+      c.strokeStyle = 'rgba(190,205,230,0.45)';
+      c.lineWidth = 1;
+      c.beginPath();
+      const slant = windX * 0.8;
+      for (const d of this.rain) {
+        const x = ox + ((((d.x + t * windX * 0.01) % 1) + 1) % 1) * w;
+        const y = oy + ((((d.y + t * 1.6 * d.s) % 1) + 1) % 1) * h;
+        c.moveTo(x, y);
+        c.lineTo(x + slant, y + 14 * d.s);
+      }
+      c.stroke();
+      c.fillStyle = 'rgba(40,50,60,0.12)';
+      c.fillRect(ox, oy, w, h);
+    }
+    if (L.weather === 'fog') {
+      c.fillStyle = 'rgba(205,210,214,0.5)';
+      c.fillRect(ox, oy, w, h);
+    }
+    if (L.weather === 'heat' && main) {
+      // Heat shimmer: re-draw thin horizontal strips with a small wobble.
+      const cv = this.canvas;
+      const strip = 4;
+      for (let y = 0; y < this.h; y += strip) {
+        const off = Math.sin(y * 0.09 + t * 4) * 1.6;
+        c.drawImage(cv, 0, y * this.dpr, cv.width, strip * this.dpr, off, y, this.w, strip);
+      }
+    }
+  }
+
+  // --- naked eye: the ridge you are lying on, and Ghost beside you -------------------------------
+  drawForeground(L, t) {
+    const c = this.ctx;
+    const w = this.w;
+    const h = this.h;
+    const night = L.sky === 'night';
+    const snow = L.weather === 'snow';
+    // Ridge
+    c.fillStyle = snow ? '#c9d3da' : night ? '#0d140b' : '#2c3d1e';
+    c.beginPath();
+    c.moveTo(0, h);
+    c.lineTo(0, h * 0.8);
+    for (let x = 0; x <= w; x += 20) c.lineTo(x, h * 0.8 + Math.sin(x * 0.013) * 10 + Math.sin(x * 0.051) * 4);
+    c.lineTo(w, h);
+    c.fill();
+    // Grass blades
+    c.strokeStyle = snow ? '#9fb0bb' : night ? '#1a2615' : '#41592a';
+    c.lineWidth = 2;
+    c.beginPath();
+    for (let i = 0; i < 160; i++) {
+      const x = (i * 97.3) % w;
+      const base = h * 0.8 + Math.sin(x * 0.013) * 10 + 6;
+      const sway = Math.sin(t * 1.5 + i) * 3;
+      c.moveTo(x, base);
+      c.quadraticCurveTo(x + sway, base - 14, x + sway * 2, base - 26 - (i % 5) * 4);
+    }
+    c.stroke();
+
+    // Ghost, prone to your right, ghillie suit, rifle on a bipod pointing down range.
+    const gx = w * 0.7;
+    const gy = h * 0.86;
+    const suit = night ? '#1a2414' : snow ? '#d9e0e4' : '#3d4d2a';
+    const tuft = night ? '#25331c' : snow ? '#b7c3ca' : '#56693a';
+    c.fillStyle = suit;
+    c.beginPath();
+    c.ellipse(gx + 120, gy + 40, 210, 62, -0.22, 0, Math.PI * 2); // body and legs stretching off-screen
+    c.fill();
+    c.strokeStyle = tuft;
+    c.lineWidth = 3;
+    c.beginPath();
+    for (let i = 0; i < 40; i++) {
+      const a = (i / 40) * Math.PI * 2;
+      const px = gx + 120 + Math.cos(a) * 200;
+      const py = gy + 40 + Math.sin(a) * 58 - 0.22 * Math.cos(a) * 60;
+      c.moveTo(px, py);
+      c.lineTo(px + Math.cos(a) * 10 + Math.sin(t + i) * 2, py + Math.sin(a) * 10 - 4);
+    }
+    c.stroke();
+    // Rifle
+    c.strokeStyle = '#141414';
+    c.lineWidth = 9;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(gx + 10, gy - 6);
+    c.lineTo(gx - 150, gy - 70);
+    c.stroke();
+    c.lineWidth = 4;
+    c.beginPath();
+    c.moveTo(gx - 150, gy - 70);
+    c.lineTo(gx - 235, gy - 104); // barrel
+    c.moveTo(gx - 175, gy - 80); c.lineTo(gx - 190, gy - 30); // bipod
+    c.moveTo(gx - 175, gy - 80); c.lineTo(gx - 160, gy - 28);
+    c.stroke();
+    c.fillStyle = '#222';
+    c.save();
+    c.translate(gx - 60, gy - 52);
+    c.rotate(-0.38);
+    c.fillRect(-45, -16, 90, 13); // scope
+    c.restore();
+    // Head with boonie hat, cheek on the stock
+    c.fillStyle = suit;
+    c.beginPath();
+    c.arc(gx - 8, gy - 30, 30, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = tuft;
+    c.beginPath();
+    c.ellipse(gx - 8, gy - 48, 46, 13, -0.2, 0, Math.PI * 2);
+    c.fill();
+    c.lineCap = 'butt';
+    c.fillStyle = 'rgba(255,255,255,0.85)';
+    c.font = '600 12px ui-monospace, Menlo, monospace';
+    c.textAlign = 'center';
+    c.fillText('GHOST (SNIPER)', gx - 8, gy - 74);
+
+    // Your own hands holding the lowered binoculars, bottom-left
+    c.fillStyle = '#1b1b1b';
+    c.beginPath();
+    c.roundRect(w * 0.1, h * 0.86, 70, 110, 18);
+    c.roundRect(w * 0.1 + 80, h * 0.86, 70, 110, 18);
+    c.fill();
+    c.fillStyle = '#333';
+    c.fillRect(w * 0.1 + 60, h * 0.88, 30, 24);
+  }
+
   // --- scene ------------------------------------------------------------------------
-  drawScene(world, t, { labels }) {
+  drawScene(world, t) {
     const c = this.ctx;
     const L = world.level;
     const { ox, oy, w, h } = this.cam;
@@ -131,7 +368,6 @@ export class Renderer {
     // People not on a train, then the train with its passengers.
     for (const p of world.people) if (p.car == null) this.drawPerson(world, p, t);
     if (world.train) this.drawTrain(world, t);
-    if (labels) this.drawLabels(world, t);
   }
 
   drawStars(ox, oy, w, h) {
@@ -522,10 +758,9 @@ export class Renderer {
     c.fill();
   }
 
-  drawSnow(windX, t, w = this.w, ox = 0, oy = 0) {
+  drawSnow(windX, t, w = this.w, ox = 0, oy = 0, h = this.h) {
     const c = this.ctx;
     c.fillStyle = 'rgba(255,255,255,0.85)';
-    const h = w === this.w ? this.h : w;
     for (const f of this.snow) {
       const x = ox + ((((f.x + t * windX * 0.004 * f.s) % 1) + 1) % 1) * w;
       const y = oy + (((f.y + t * 0.05 * f.s) % 1) + 1) % 1 * h;
@@ -536,58 +771,31 @@ export class Renderer {
   }
 
   // --- overlays ------------------------------------------------------------------------
+  /** Faint 1-mil grid (5-mil lines a bit stronger) to help measure targets. */
   drawMilGrid(D, viewMils) {
     const c = this.ctx;
     const pxPerMil = this.w / viewMils;
     const cx = this.w / 2;
     const cy = this.h / 2;
     c.lineWidth = 1;
-    c.font = '10px ui-monospace, Menlo, monospace';
-    c.textAlign = 'center';
-    c.textBaseline = 'top';
     const half = Math.ceil(viewMils / 2);
     for (let i = -half; i <= half; i++) {
       const x = cx + i * pxPerMil;
-      const major = i % 5 === 0;
-      c.strokeStyle = major ? 'rgba(180,255,180,0.28)' : 'rgba(180,255,180,0.1)';
+      c.strokeStyle = i % 5 === 0 ? 'rgba(180,255,180,0.22)' : 'rgba(180,255,180,0.08)';
       c.beginPath();
       c.moveTo(x, 0);
       c.lineTo(x, this.h);
       c.stroke();
-      if (major) {
-        c.fillStyle = 'rgba(200,255,200,0.7)';
-        c.fillText(String(i), x, 4);
-      }
     }
     const halfV = Math.ceil(this.h / pxPerMil / 2);
-    c.textAlign = 'left';
-    c.textBaseline = 'middle';
     for (let i = -halfV; i <= halfV; i++) {
       const y = cy + i * pxPerMil;
-      const major = i % 5 === 0;
-      c.strokeStyle = major ? 'rgba(180,255,180,0.28)' : 'rgba(180,255,180,0.1)';
+      c.strokeStyle = i % 5 === 0 ? 'rgba(180,255,180,0.22)' : 'rgba(180,255,180,0.08)';
       c.beginPath();
       c.moveTo(0, y);
       c.lineTo(this.w, y);
       c.stroke();
-      if (major && i !== 0) {
-        c.fillStyle = 'rgba(200,255,200,0.7)';
-        c.fillText(String(-i), 4, y);
-      }
     }
-    c.fillStyle = 'rgba(200,255,200,0.8)';
-    c.textAlign = 'left';
-    c.textBaseline = 'bottom';
-    c.fillText(`SPOTTER SCOPE  ·  grid = 1 mil  (1 mil = ${(D / 1000).toFixed(2)} m at ${D} m)`, 8, this.h - 8);
-  }
-
-  drawSpotterVignette() {
-    const c = this.ctx;
-    const g = c.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.35, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.75);
-    g.addColorStop(0, 'rgba(0,0,0,0)');
-    g.addColorStop(1, 'rgba(0,0,0,0.55)');
-    c.fillStyle = g;
-    c.fillRect(0, 0, this.w, this.h);
   }
 
   drawSniperMarker(aim, label) {

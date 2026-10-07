@@ -2,41 +2,90 @@
 
 A **voice-controlled sniper game** built for the Fish Audio hackathon.
 
-**You are the spotter.** An AI sniper lies next to you and does exactly what you tell him. Find
-the right target in the crowd, read the range, wind and temperature, then talk him onto the shot.
-Each shot is graded **0 to 100**:
+You lie in the grass with a pair of binoculars. Beside you, **Ghost**, an AI sniper, waits
+behind the rifle. He only shoots what you tell him to. Find the target through your
+binoculars, read the weather, and **talk him onto the shot**.
 
-| Hit | Score |
-|---|---|
-| Headshot | **100** |
-| Neck / center mass | 85 to 100 (closer to the heart scores higher) |
-| Gut | 70 (target down) |
-| Arm | 45 (target wounded and escapes) |
-| Leg | 30 (target wounded and escapes) |
-| Miss / out of time | 0 |
-| Civilian | **0, CIVILIAN CASUALTY** |
+## ▶️ Quick start
 
-70 or more passes the mission. Using the hint caps the score at 60.
+```bash
+npm start            # Node 20+, no install needed → open http://localhost:3000 in Chrome or Edge
+```
+
+Click **MIC** (or press `M`), allow the microphone, and pick **Mission 1**. Optional: put a
+`FISH_API_KEY` in `.env` to give Ghost and the target Fish Audio voices (see [Voice stack](#voice-stack)).
+
+## 🎮 How to play
+
+1. **Turn on your mic.** Click **MIC** (or press `M`) and allow access. Use Chrome or Edge. Headphones help. No mic? Type the same words into the box at the bottom.
+2. **Read the briefing.** It tells you who the target is (suit, tie, glasses, hat) and what the weather is doing. Say *"start mission"*.
+3. **Look through your binoculars.** Drag the view or use the arrow keys to scan, and scroll to zoom. Every person has a number tag. Press `B` (or say *"binoculars down"*) to lower them and see Ghost lying prone beside you.
+4. **Name the target.** Say *"Target three."* Ghost replies with what he sees through his scope (*"Black suit, blue tie"*). If that isn't your man, pick again.
+5. **Call the conditions** shown on the right:
+   - **Range**: *"Range six hundred."* In **fog or heat haze** the laser gets no return, so measure on the binocular scale instead: range = 1.75 m × 1000 ÷ the person's height in mils.
+   - **Wind**: *"Wind eight from the right."* It gusts. Watch the meter and the orange flags. Ghost tells you when it shifts.
+   - **Temperature**: *"Temperature fifteen."* Cold air means more drop, hot air means less.
+   - **Movement**: *"Moving at one."* Ghost aims ahead of him. Or wait until he stops (Ghost calls it out).
+6. **Go for the head**: *"Go for the head."* A body shot might not kill him.
+7. **Give the order**: *"Send it!"* On the train, say *"Fire when ready"* and Ghost shoots when the window is clear.
+8. **If he survives, follow up.** A miss or a wound sends him running and the civilians scatter. You have about 8 seconds for one more shot: *"Moving at three, send it!"*
+
+You can say the whole call in one breath: *"Target two, range four fifty, wind six from the right, go for the head, send it."*
+
+### Scoring (0 to 100)
+
+| Hit | Score | What happens |
+|---|---|---|
+| Headshot | **100** | Always kills |
+| Neck / center mass | 85 to 100 | Usually kills. Off-center chest hits can fail |
+| Gut | 70 | 50/50 he survives and runs |
+| Arm / leg | 45 / 30 | He runs |
+| Wounded and escaped | max 50 | You get one follow-up shot first |
+| Follow-up kill | 80% of that shot | |
+| Miss / out of time | 0 | |
+| Civilian | **0** | **Mission failed** |
+
+70 or more passes. The hint (`H`) caps the score at 60.
 
 ## The three roles
 
 | Role | Who | What they do |
 |---|---|---|
-| 🎧 **Spotter** | You (voice) | Identify the target, read conditions, give the call, order the shot |
-| 🎯 **Sniper** | AI agent | Dials the firing solution from your call, tracks the target, reads back, fires on command. Voiced with Fish Audio TTS |
-| 🕴️ **Target** | Viktor "The Viper" Kovac | Walks, stops, rides trains, and taunts you over intercepted radio (a second Fish voice). Runs if you miss |
+| 🔭 **Spotter** | You (voice + binoculars) | Scan with the binoculars, identify the target, read conditions, give the call, order the shot |
+| 🎯 **Ghost, the sniper** | AI agent beside you | Dials the firing solution from your call, describes who he's on, warns of wind shifts and target movement, fires on command. Voiced with Fish Audio TTS |
+| 🕴️ **The Target** | A new mark each contract | Walks, stops, rides trains, taunts you over intercepted radio (a second Fish voice), and runs if he survives |
 
-## Missions (easy → hard)
+## Modes
 
-| # | Mission | Range | Challenge |
-|---|---|---|---|
-| 1 | Open Field | 300 m | Stationary target alone in the middle of the field. Calm. Learn the basics |
-| 2 | The Farmhouse | 450 m | 2 civilians next to the target, steady crosswind |
-| 3 | Winter Market | 600 m | 15°F (cold air = more drop), gusty wind, a walking target, and a decoy in a similar suit |
-| 4 | Rooftop Rendezvous | 800 m | Rangefinder **offline**: estimate range with the mil grid. 95°F heat, strong gusts |
-| 5 | The Midnight Express | 450 m | Target on a **constantly moving train**. Lead him and fire through the window |
+### Campaign: 5 missions (easy → hard)
 
-Every mission has a time limit.
+| # | Mission | Range | Weather | Challenge |
+|---|---|---|---|---|
+| 1 | Open Field | 300 m | Clear | Target stands still, alone in the middle of the field. Learn the basics |
+| 2 | The Farmhouse | 450 m | Clear, windy | 2 civilians next to the target, steady crosswind |
+| 3 | Winter Market | 600 m | Snow, 15°F | Cold air adds drop, gusty wind, a walking target and a decoy in a similar suit |
+| 4 | Rooftop Rendezvous | 800 m | Heat haze, 95°F | Laser blocked, so you measure the range yourself. Strong gusts |
+| 5 | The Midnight Express | 450 m | Night rain | Target on a **constantly moving train**, seen through night vision. Lead him and fire through the window |
+
+### Endless Contracts
+
+Endless random variations of the five missions. Each contract rolls a new target (name, suit,
+tie, glasses, hat), range, wind, gusts, temperature, weather (clear, rain, snow, fog, heat
+haze), crowd size, walking patterns, train speed and time limit. The difficulty climbs with
+every contract. Fail one (score under 70 or a civilian hit) and you lose a life. You have 3
+lives.
+
+### Weather and the elements
+
+| Condition | Effect |
+|---|---|
+| Wind (with gusts) | Pushes the bullet sideways. The meter and flags change over time |
+| Temperature | Cold = denser air = more drop. Hot = less drop |
+| Fog | Laser rangefinder can't get a reading, and visibility is reduced |
+| Heat haze | Laser can't get a reading, and the image shimmers |
+| Rain | Blurs the view |
+| Snow | Usually comes with freezing temperatures |
+| Night | Binoculars and scope switch to night vision |
 
 ## The physics (what your call has to cover)
 
@@ -68,7 +117,9 @@ The debrief compares what you called with the real values and tells you what to 
 You can say it all in one breath: *"Target two, range four fifty, wind six from the right, send it."*
 Numbers work spoken ("six fifty", "one point five", "minus five") or as digits.
 
-Keyboard: `M` mic on/off · `Space` push-to-talk (Fish mode) · `F` fire · `H` hint · `Z` zoom · `T` type a command · `Esc` menu.
+| "Binoculars down" / "binoculars up" | Look with the naked eye (Ghost beside you) or through the binoculars |
+
+Keyboard: `M` mic on/off · `B` binoculars · arrows or drag to look · scroll or `Z` zoom · `C` re-center · `F` fire · `H` hint · `T` type a command · `Space` push-to-talk (Fish mode) · `Esc` menu.
 
 ## Run it
 
@@ -100,14 +151,15 @@ server.mjs            static server + /api/tts, /api/stt (Fish Audio), /api/snip
 public/index.html     UI shell
 public/js/
   main.js             game loop, state machine, HUD, debrief
-  levels.js           mission definitions (add your own here)
+  levels.js           campaign mission definitions (add your own here)
+  endless.js          Endless Contracts generator (seeded variations of the campaign)
   world.js            people, train, wind over time, hit testing, 0-100 scoring
   ballistics.js       drop / drift / time of flight / firing solution
   sniper.js           the AI sniper: applies spotter calls, tracks, computes impacts
   commands.js         speech → commands parser (numbers, homophones, phrasing variants)
   voice.js            browser speech recognition + Fish push-to-talk recorder
   audio.js            synthesized SFX + Fish/browser character voices
-  render.js           canvas renderer: spotter scope, mil grid, sniper scope inset
+  render.js           canvas renderer: binocular view, naked-eye view with Ghost, weather, rifle-scope inset
 test/                 node:test suites (npm test)
 ```
 
@@ -118,7 +170,7 @@ npm test
 ```
 
 The tests check that a perfect call eliminates the target on every mission, that a skipped
-range call misses, the direction of the ballistics effects, civilian casualties, train
+range call misses, that every generated Endless contract is winnable, the direction of the ballistics effects, civilian casualties, train
 occlusion, and the speech parser on real-world phrasings.
 
 ## Adding a mission

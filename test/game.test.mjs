@@ -9,8 +9,23 @@ import { firingSolution, timeOfFlight } from '../public/js/ballistics.js';
 function perfectShot(level, { part = 'chest', calls = true } = {}) {
   const world = new World(level, { rng: mulberry32(7) });
   const sniper = new Sniper(world);
+  // Wait like a sensible spotter: target visible, nobody crossing in front of him, and
+  // not about to stop or turn while the bullet is in the air.
+  const clear = (t) => {
+    if (!world.isVisible(world.target, t, 3)) return false;
+    const tof = timeOfFlight(level.distance, level.tempF);
+    for (const dt of [0, tof / 2, tof, tof + 0.3]) {
+      const me = world.personState(world.target, t + dt);
+      if (Math.abs(me.vx - world.personState(world.target, t).vx) > 1e-9) return false;
+      for (const o of world.people) {
+        if (o === world.target || o.car != null) continue;
+        if (Math.abs(world.personState(o, t + dt).x - me.x) < 0.8 && Math.abs(o.y - world.target.y) < 1) return false;
+      }
+    }
+    return true;
+  };
   let t = 0;
-  while (!world.isVisible(world.target, t, 3) && t < 60) t += 0.05;
+  while (!clear(t) && t < 60) t += 0.05;
   // Prefer a moment the target walks (exercises the lead), but any visible moment works.
   sniper.apply({ type: 'target', id: world.target.label }, t);
   sniper.apply({ type: 'aim', part }, t);
@@ -80,4 +95,27 @@ test('train body blocks shots between windows', () => {
   const w1 = car.windows[1];
   const hit = world.hitTest((w0.x0 + w1.x1) / 2, (w0.y0 + w0.y1) / 2, 0);
   assert.equal(hit.kind, 'train');
+});
+
+test('endless contracts are all winnable with a perfect call', async () => {
+  const { generateLevel } = await import('../public/js/endless.js');
+  let wins = 0;
+  let total = 0;
+  for (let seed = 1; seed <= 4; seed++) {
+    for (let round = 0; round < 15; round++) {
+      const level = generateLevel(round, seed);
+      assert.ok(level.people.filter((p) => p.isTarget).length === 1, 'exactly one target');
+      const { hit, result } = perfectShot(level);
+      total++;
+      if (hit.kind === 'person' && hit.person.isTarget && result.score >= 85) wins++;
+    }
+  }
+  // A perfect, instant call should essentially always land.
+  assert.ok(wins / total > 0.95, `${wins}/${total}`);
+});
+
+test('endless contracts are deterministic per seed and round', async () => {
+  const { generateLevel } = await import('../public/js/endless.js');
+  assert.deepEqual(generateLevel(5, 42), generateLevel(5, 42));
+  assert.notDeepEqual(generateLevel(5, 42), generateLevel(6, 42));
 });

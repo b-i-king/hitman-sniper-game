@@ -16,6 +16,7 @@
 //   { type: 'fire' }                  "fire", "send it", "take the shot"
 //   { type: 'cancel' }                "hold fire", "abort"
 //   { type: 'zoom', dir }             "zoom in" | "zoom out"
+//   { type: 'binoculars', up }        "binoculars up" | "lower binoculars"
 //   { type: 'status' }                "status", "read back"
 //   { type: 'hint' }                  "hint"
 //   { type: 'start' } { type: 'next' } { type: 'retry' }  menu navigation
@@ -183,6 +184,10 @@ export function parseCommands(text) {
     return { type: 'adjust', axis, value: sign * Math.abs(v) };
   });
 
+  // --- binoculars ------------------------------------------------------------------
+  take(/\b(?:(?:lower|drop|put down|take down)(?: the| my)? (?:binoculars?|binos?|glass)|(?:binoculars?|binos?|glass) down|naked eye)\b/g, () => ({ type: 'binoculars', up: false }));
+  take(/\b(?:(?:raise|lift|pick up|grab)(?: the| my)? (?:binoculars?|binos?|glass)|(?:binoculars?|binos?|glass) up)\b/g, () => ({ type: 'binoculars', up: true }));
+
   // --- optics / status ------------------------------------------------------------
   take(/\bzoom (in|out)\b/g, (m, d) => ({ type: 'zoom', dir: d }));
   take(/\b(status|read ?back|say again|what'?s your (solution|status)|repeat( that)?)\b/g, () => ({ type: 'status' }));
@@ -200,7 +205,7 @@ export function parseCommands(text) {
 
 export const KNOWN_TYPES = new Set([
   'target', 'aim', 'range', 'wind', 'temp', 'speed', 'lead', 'adjust', 'reset', 'fireWhenReady',
-  'fire', 'cancel', 'zoom', 'status', 'hint', 'start', 'next', 'retry',
+  'fire', 'cancel', 'zoom', 'binoculars', 'status', 'hint', 'start', 'next', 'retry',
 ]);
 
 /** Validate commands coming back from the (untrusted) LLM fallback. */
@@ -216,6 +221,7 @@ export function sanitizeCommands(list) {
       case 'wind': if (Number.isFinite(n(c.value))) out.push({ type: 'wind', value: Math.abs(n(c.value)), dir: c.dir === 'left' || c.dir === 'right' ? c.dir : null }); break;
       case 'adjust': if (Number.isFinite(n(c.value))) out.push({ type: 'adjust', axis: c.axis === 'h' ? 'h' : 'v', value: n(c.value) }); break;
       case 'zoom': out.push({ type: 'zoom', dir: c.dir === 'out' ? 'out' : 'in' }); break;
+      case 'binoculars': out.push({ type: 'binoculars', up: c.up !== false }); break;
       case 'range': case 'temp': case 'speed': case 'lead':
         if (Number.isFinite(n(c.value))) out.push({ type: c.type, value: n(c.value) });
         break;

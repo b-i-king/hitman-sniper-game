@@ -122,7 +122,8 @@ export class World {
     const tEff = p.fallenAt != null ? p.fallenAt : t;
     if (p.flee) {
       const tf = Math.max(0, tEff - p.flee.t0);
-      return { x: p.flee.x + p.flee.dir * 4 * tf, y: p.y, vx: p.fallenAt != null ? 0 : p.flee.dir * 4 };
+      const sp = p.flee.speed || 3;
+      return { x: p.flee.x + p.flee.dir * sp * tf, y: p.y, vx: p.fallenAt != null ? 0 : p.flee.dir * sp };
     }
     if (!p.move) return { x: p.x, y: p.y, vx: 0 };
     const { from, to, speed, pause, phase = 0 } = p.move;
@@ -221,14 +222,15 @@ export function scoreShot(hit, impact, world, t) {
   }
   const s = world.personState(hit.person, t);
   switch (hit.part) {
-    case 'head': return { score: 100, verdict: 'Headshot - target eliminated', eliminated: true, casualty: false };
-    case 'neck': return { score: 95, verdict: 'Neck shot - target eliminated', eliminated: true, casualty: false };
+    case 'head': return { score: 100, verdict: 'Headshot - target eliminated', eliminated: true, casualty: false, lethal: 1 };
+    case 'neck': return { score: 95, verdict: 'Neck shot - target eliminated', eliminated: true, casualty: false, lethal: 1 };
     case 'chest': {
       const d = Math.hypot(impact.x - s.x - BODY.heart.x, impact.y - s.y - BODY.heart.y);
       const score = Math.round(100 - 15 * Math.min(1, d / 0.22));
-      return { score, verdict: 'Center mass - target eliminated', eliminated: true, casualty: false };
+      // Near the heart is almost always fatal; a chest hit off-center may not drop him.
+      return { score, verdict: 'Center mass - target eliminated', eliminated: true, casualty: false, lethal: d < 0.12 ? 0.95 : 0.75 };
     }
-    case 'abdomen': return { score: 70, verdict: 'Gut shot - target down, critical', eliminated: true, casualty: false };
+    case 'abdomen': return { score: 70, verdict: 'Gut shot - target down, critical', eliminated: true, casualty: false, lethal: 0.5 };
     case 'arm': return { score: 45, verdict: 'Arm hit - target wounded and escaped', eliminated: false, casualty: false };
     case 'leg': return { score: 30, verdict: 'Leg hit - target wounded and escaped', eliminated: false, casualty: false };
     default: return { score: 0, verdict: 'Miss', eliminated: false, casualty: false };
@@ -237,3 +239,44 @@ export function scoreShot(hit, impact, world, t) {
 
 export const PASS_SCORE = 70;
 export const HINT_CAP = 60;
+/** Best score a target who survives the hit and escapes can earn. */
+export const WOUNDED_ESCAPE_CAP = 50;
+/** Follow-up shots are worth this fraction of a first-shot score. */
+export const FOLLOW_UP_FACTOR = 0.8;
+
+/** Rough human name for a hex color ("navy", "red", ...), for the sniper's descriptions. */
+export function colorName(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const sat = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+  if (l < 0.13) return 'black';
+  if (l > 0.88) return 'white';
+  if (sat < 0.18) return l < 0.45 ? 'dark grey' : 'grey';
+  let h = 0;
+  if (max === r) h = ((g - b) / (max - min)) % 6;
+  else if (max === g) h = (b - r) / (max - min) + 2;
+  else h = (r - g) / (max - min) + 4;
+  h = (h * 60 + 360) % 360;
+  if (h < 15 || h >= 340) return l < 0.3 ? 'maroon' : 'red';
+  if (h < 40) return l < 0.4 ? 'brown' : 'orange';
+  if (h < 65) return l < 0.4 ? 'olive' : 'yellow';
+  if (h < 170) return l < 0.3 ? 'dark green' : 'green';
+  if (h < 200) return 'teal';
+  if (h < 250) return l < 0.3 ? 'navy' : 'blue';
+  if (h < 290) return 'purple';
+  return 'pink';
+}
+
+/** What the sniper sees through his scope: "black jacket, red tie, sunglasses". */
+export function describeOutfit(o) {
+  const parts = [`${colorName(o.coat)} ${o.shirt && o.shirt !== o.coat ? 'suit' : 'top'}`];
+  if (o.tie) parts.push(`${colorName(o.tie)} tie`);
+  if (o.glasses) parts.push('sunglasses');
+  if (o.hat) parts.push(`${colorName(o.hat)} hat`);
+  return parts.join(', ');
+}

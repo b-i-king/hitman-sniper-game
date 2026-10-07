@@ -142,7 +142,24 @@ summary { cursor: pointer; color: var(--green); }
 .debrief .bad { color: var(--red); }
 .tip { color: var(--amber); line-height: 1.5; }
 
+#dWeather { font-size: 14px; }
+.level.endless { border-color: #5a4a1a; background: #1e1c12; }
+.level.endless .n { color: var(--amber); }
+.scene { color: var(--text); font-style: italic; line-height: 1.5; border-left: 3px solid var(--amber); padding-left: 10px; margin: 12px 0; }
+.actions.top { margin-top: 4px; }
+.how .steps { line-height: 1.6; padding-left: 22px; }
+.how .steps li { margin-bottom: 6px; }
+.how .steps ul { margin: 4px 0; }
+.how q { color: #a9d8ff; }
+.how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 10px; }
+.how-grid h4 { color: var(--dim); letter-spacing: 2px; font-size: 12px; margin: 6px 0; }
+.how-grid p { font-size: 13px; line-height: 1.5; margin: 6px 0; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 0 5px; font-family: var(--mono); font-size: 12px; color: var(--green); }
+#binoBtn { padding: 10px 12px; }
+.stat b#lives { color: var(--red); letter-spacing: 2px; }
+
 @media (max-width: 900px) {
+  .how-grid { grid-template-columns: 1fr; }
   body { overflow: auto; }
   .layout { grid-template-columns: 1fr; }
   .stage { height: 56vh; }
