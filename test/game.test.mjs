@@ -119,3 +119,26 @@ test('endless contracts are deterministic per seed and round', async () => {
   assert.deepEqual(generateLevel(5, 42), generateLevel(5, 42));
   assert.notDeepEqual(generateLevel(5, 42), generateLevel(6, 42));
 });
+
+test('dossiers use the same words the sniper uses, and decoys differ', async () => {
+  const { describeOutfit } = await import('../public/js/world.js');
+  const { generateLevel } = await import('../public/js/endless.js');
+  const levels = [...LEVELS];
+  for (let r = 0; r < 30; r++) levels.push(generateLevel(r, 5));
+  for (const L of levels) {
+    const target = L.people.find((p) => p.isTarget);
+    const said = describeOutfit(target.outfit);
+    assert.ok(L.target.description.toLowerCase().startsWith(said), `${L.id}: "${L.target.description}" vs "${said}"`);
+    for (const p of L.people) {
+      if (p !== target) assert.notEqual(describeOutfit(p.outfit), said, `${L.id}: a civilian looks exactly like the target`);
+    }
+  }
+});
+
+test('outfits fit the setting', () => {
+  const style = (id) => LEVELS.find((l) => l.id === id).people.find((p) => p.isTarget).outfit.style;
+  assert.equal(style('field'), 'jacket');
+  assert.equal(style('farm'), 'jacket');
+  assert.equal(style('market'), 'parka');
+  assert.equal(style('rooftop'), 'suit');
+});

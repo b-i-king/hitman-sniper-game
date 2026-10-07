@@ -7,8 +7,21 @@
 // weather: 'clear' | 'rain' | 'snow' | 'fog' | 'heat' (fog and heat knock out the rangefinder).
 // train: optional { speed (m/s), cars, carLength, floorY, windows } - passengers ride in it.
 
+import { dossierLine } from './world.js';
+
+// Outfits fit the setting: hunting gear in the field, work clothes on the farm, parkas in the
+// winter market, suits on the rooftop and the train. The dossier line is built from the same
+// words the sniper uses to describe people, so they always match.
+const DRESS = {
+  hunter: { style: 'jacket', coat: '#556b2f', shirt: '#556b2f', pants: '#3b4a63', skin: '#d9a77c', hair: '#2a1d14', glasses: true, hat: '#e8670c', hatStyle: 'cap' },
+  rancher: { style: 'jacket', coat: '#9b1c1c', shirt: '#9b1c1c', pants: '#3b4a63', skin: '#d9a77c', hair: '#2a1d14', glasses: true, hat: '#16161a', hatStyle: 'brim' },
+  parka: { style: 'parka', coat: '#1c2a4a', pants: '#2c2c34', skin: '#d9a77c', hair: '#2a1d14', glasses: true, scarf: '#d01818', hat: '#7c7f86', hatStyle: 'beanie' },
+};
+const overalls = (shirt, extra = {}) => ({ style: 'overalls', shirt, coat: shirt, pants: '#3d5a80', skin: extra.skin || '#e0b58f', hair: extra.hair || '#3a2a1a', ...extra });
+const parka = (coat, extra = {}) => ({ style: 'parka', coat, pants: '#2c2c34', skin: extra.skin || '#e0b58f', hair: extra.hair || '#3a2a1a', ...extra });
+
 export const SUIT = {
-  target: { coat: '#16161a', shirt: '#f2f2f2', tie: '#d01818', pants: '#16161a', skin: '#d9a77c', hair: '#2a1d14', glasses: true },
+  target: { style: 'suit', coat: '#16161a', shirt: '#f2f2f2', tie: '#d01818', pants: '#16161a', skin: '#d9a77c', hair: '#2a1d14', glasses: true },
 };
 
 export const civ = (coat, pants, extra = {}) => ({ coat, shirt: extra.shirt || coat, tie: null, pants, skin: extra.skin || '#e0b58f', hair: extra.hair || '#3a2a1a', ...extra });
@@ -38,10 +51,10 @@ export const LEVELS = [
     ],
     target: {
       name: 'Viktor "The Viper" Kovac',
-      description: 'Black suit, red tie, sunglasses.',
+      description: dossierLine(DRESS.hunter, 'hat'),
       lines: ['This field is perfect. Nobody will find us out here.', 'Where is my driver? I do not like waiting.'],
     },
-    people: [{ x: 0, outfit: SUIT.target, isTarget: true }],
+    people: [{ x: 0, outfit: DRESS.hunter, isTarget: true }],
     props: [
       { type: 'hills', color: '#7d9a6a' },
       { type: 'tree', x: -14, h: 9 }, { type: 'tree', x: 13, h: 11 }, { type: 'tree', x: 17, h: 7 },
@@ -74,13 +87,13 @@ export const LEVELS = [
     ],
     target: {
       name: 'Viktor "The Viper" Kovac',
-      description: 'Black suit, red tie, sunglasses.',
+      description: `${dossierLine(DRESS.rancher, 'hat')} (The farmhands wear overalls.)`,
       lines: ['The shipment arrives tonight. Keep the barn locked.', 'Smile, gentlemen. Business is good.'],
     },
     people: [
-      { x: -3.2, outfit: civ('#5b7fb5', '#3b4a63', { shirt: '#5b7fb5', hat: '#c9a35a' }) },
-      { x: 0.4, outfit: SUIT.target, isTarget: true },
-      { x: 3.6, outfit: civ('#9c4a2c', '#4a3a2a', { hat: '#6b4d2a' }) },
+      { x: -3.2, outfit: overalls('#c0392b', { hat: '#b8945a', hatStyle: 'brim' }) },
+      { x: 0.4, outfit: DRESS.rancher, isTarget: true },
+      { x: 3.6, outfit: overalls('#e9e4d4', { hat: '#5a3e2b', hatStyle: 'cap' }) },
     ],
     props: [
       { type: 'hills', color: '#8fa36f' },
@@ -109,7 +122,7 @@ export const LEVELS = [
     sky: 'winter',
     ground: '#e8eef2',
     snow: true,
-    intel: 'Freezing cold air means more bullet drop - call the temperature. The target walks the market and stops at the stalls. Watch for a decoy in a similar suit.',
+    intel: 'Freezing cold air means more bullet drop - call the temperature. The target walks the market and stops at the stalls. Watch for a bodyguard in the same parka.',
     tutorial: [
       'Call the temperature: "Temperature fifteen."',
       'Gusty wind - read the meter right before you call it.',
@@ -117,15 +130,15 @@ export const LEVELS = [
     ],
     target: {
       name: 'Viktor "The Viper" Kovac',
-      description: 'Black suit, RED tie, sunglasses. (His bodyguard wears a black suit with a blue tie.)',
+      description: `${dossierLine(DRESS.parka, 'scarf')} (His bodyguard wears the same parka with a blue scarf.)`,
       lines: ['It is so cold my coffee froze. Hurry up with the exchange.', 'Keep your eyes open. I hear a sniper is in town.'],
     },
     people: [
-      { x: -8, outfit: civ('#c0392b', '#2c3e50', { hat: '#ecf0f1' }), move: { from: -11, to: -2, speed: 0.7, pause: 2, phase: 0 } },
-      { x: -2, outfit: SUIT.target, isTarget: true, move: { from: -5, to: 4, speed: 0.9, pause: 4, phase: 1.5 } },
-      { x: 2, outfit: { ...SUIT.target, tie: '#1d4ed8', glasses: false, hair: '#111' }, move: { from: -3, to: 6, speed: 0.9, pause: 4, phase: 0.2 } },
-      { x: 7, outfit: civ('#27ae60', '#34495e', { hat: '#c0392b' }), move: { from: 4, to: 11, speed: 0.6, pause: 3, phase: 2 } },
-      { x: 10, outfit: civ('#8e44ad', '#2c3e50', { hair: '#d4a017' }) },
+      { x: -8, outfit: parka('#c0392b', { hat: '#ecf0f1', hatStyle: 'beanie' }), move: { from: -11, to: -2, speed: 0.7, pause: 2, phase: 0 } },
+      { x: -2, outfit: DRESS.parka, isTarget: true, move: { from: -5, to: 4, speed: 0.9, pause: 4, phase: 1.5 } },
+      { x: 2, outfit: { ...DRESS.parka, scarf: '#1d4ed8', glasses: false, skin: '#b07d56' }, move: { from: -3, to: 6, speed: 0.9, pause: 4, phase: 0.2 } },
+      { x: 7, outfit: parka('#27ae60', { hat: '#c0392b', hatStyle: 'beanie', scarf: '#ecf0f1' }), move: { from: 4, to: 11, speed: 0.6, pause: 3, phase: 2 } },
+      { x: 10, outfit: parka('#8e44ad', { hair: '#d4a017' }) },
     ],
     props: [
       { type: 'buildings', color: '#8d8f9a', y: 0 },
@@ -160,7 +173,7 @@ export const LEVELS = [
     ],
     target: {
       name: 'Viktor "The Viper" Kovac',
-      description: 'Black suit, red tie, sunglasses.',
+      description: dossierLine(SUIT.target, 'tie'),
       lines: ['The helicopter lands in ten minutes. Nobody leaves this roof.', 'This heat is unbearable. Get me some water.'],
     },
     roofY: 12,
@@ -203,7 +216,7 @@ export const LEVELS = [
     ],
     target: {
       name: 'Viktor "The Viper" Kovac',
-      description: 'Black suit, red tie, sunglasses. Riding in the second passenger car.',
+      description: `${dossierLine(SUIT.target, 'tie')} Riding in the second passenger car.`,
       lines: ['Nobody can hit a moving train. I am untouchable.', 'Conductor! More champagne!'],
     },
     train: { speed: 4, carLength: 13, gap: 1, cars: 3, floorY: 1.1, windowBottom: 0.95, windowTop: 1.9, windowWidth: 1.5, windowsPerCar: 4 },

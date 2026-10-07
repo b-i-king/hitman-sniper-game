@@ -25,6 +25,7 @@
     <section class="stage" id="stage">
       <canvas id="view"></canvas>
       <div class="banner" id="banner"></div>
+      <div class="rec-badge hidden" id="recBadge"><span class="rec-dot"></span>REC · release SPACE to send</div>
       <div class="paused hidden" id="pausedOverlay"><b>PAUSED</b><span>Press P, click RESUME, or say <q>resume</q></span></div>
 
       <!-- Main menu -->
@@ -229,7 +230,7 @@
 
   <footer class="talkbar">
     <button class="mic" id="micBtn" title="M: toggle mic / hold SPACE in push-to-talk mode"><span class="dot"></span><span id="micLabel">MIC OFF</span></button>
-    <div class="transcript" id="transcript">Click the mic (or press M) and talk to your sniper.</div>
+    <div class="transcript" id="transcript">Click MIC (or press M) for hands-free, or hold SPACE to talk.</div>
     <form id="typeForm" autocomplete="off"><input id="typeInput" placeholder="…or type a command (e.g. target 1, range 300, send it)" /></form>
     <button class="ghost" id="soundBtn" title="N" aria-pressed="false">🔊 SOUND</button>
     <button class="ghost" id="zoomBtn" title="Z / scroll">🔍 ZOOM</button>

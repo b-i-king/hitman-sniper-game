@@ -592,13 +592,30 @@ export class Renderer {
     R(0.02 - swing, 0.05, 0.17 - swing, 0.9, o.pants);
     R(-0.19 + swing, 0, -0.01 + swing, 0.06, '#111');
     R(0.01 - swing, 0, 0.19 - swing, 0.06, '#111');
-    // Torso and arms
-    R(-0.2, 0.86, 0.2, 1.48, o.coat);
-    R(-0.29, 0.86, -0.2, 1.46, o.coat);
-    R(0.2, 0.86, 0.29, 1.46, o.coat);
+    // Torso and arms, by outfit style
+    const style = o.style || 'suit';
+    if (style === 'overalls') {
+      R(-0.2, 0.86, 0.2, 1.48, o.shirt); // shirt and sleeves
+      R(-0.29, 0.86, -0.2, 1.46, o.shirt);
+      R(0.2, 0.86, 0.29, 1.46, o.shirt);
+      R(-0.14, 0.86, 0.14, 1.32, o.pants); // bib
+      R(-0.13, 1.32, -0.08, 1.48, o.pants); // straps
+      R(0.08, 1.32, 0.13, 1.48, o.pants);
+    } else if (style === 'parka') {
+      R(-0.23, 0.55, 0.23, 1.48, o.coat); // long, puffy
+      R(-0.31, 0.84, -0.22, 1.46, o.coat);
+      R(0.22, 0.84, 0.31, 1.46, o.coat);
+      R(-0.23, 1.0, 0.23, 1.02, 'rgba(0,0,0,0.25)'); // quilting
+      R(-0.23, 1.2, 0.23, 1.22, 'rgba(0,0,0,0.25)');
+    } else {
+      R(-0.2, 0.86, 0.2, 1.48, o.coat);
+      R(-0.29, 0.86, -0.2, 1.46, o.coat);
+      R(0.2, 0.86, 0.29, 1.46, o.coat);
+      if (style === 'jacket') R(-0.008, 0.88, 0.008, 1.44, 'rgba(0,0,0,0.35)'); // zip
+    }
     R(-0.28, 0.78, -0.21, 0.86, o.skin);
     R(0.21, 0.78, 0.28, 0.86, o.skin);
-    if (o.shirt && o.shirt !== o.coat) {
+    if (style !== 'overalls' && style !== 'parka' && o.shirt && o.shirt !== o.coat) {
       c.fillStyle = o.shirt;
       c.beginPath();
       c.moveTo(-0.08 * m, -1.48 * m);
@@ -618,6 +635,10 @@ export class Renderer {
     }
     // Neck and head
     R(-0.05, 1.46, 0.05, 1.53, o.skin);
+    if (o.scarf) {
+      R(-0.12, 1.42, 0.12, 1.52, o.scarf);
+      R(0.03, 1.12, 0.1, 1.44, o.scarf); // hanging end
+    }
     c.fillStyle = o.skin;
     c.beginPath();
     c.arc(0, -BODY.head.cy * m, BODY.head.r * m, 0, Math.PI * 2);
@@ -628,8 +649,27 @@ export class Renderer {
     c.fill();
     if (o.glasses) R(-0.085, 1.615, 0.085, 1.655, '#050505');
     if (o.hat) {
-      R(-0.16, 1.69, 0.16, 1.72, o.hat);
-      R(-0.1, 1.72, 0.1, 1.82, o.hat);
+      const hs = o.hatStyle || 'fedora';
+      if (hs === 'cap') {
+        c.fillStyle = o.hat;
+        c.beginPath();
+        c.arc(0, -1.66 * m, 0.11 * m, Math.PI, 0);
+        c.fill();
+        R(0, 1.655, 0.19, 1.68, o.hat); // bill
+      } else if (hs === 'beanie') {
+        c.fillStyle = o.hat;
+        c.beginPath();
+        c.arc(0, -1.64 * m, 0.12 * m, Math.PI, 0);
+        c.fill();
+        R(-0.12, 1.62, 0.12, 1.665, o.hat); // cuff
+        c.beginPath();
+        c.arc(0, -1.78 * m, 0.03 * m, 0, Math.PI * 2); // pom-pom
+        c.fill();
+      } else {
+        const brim = hs === 'brim' ? 0.22 : 0.16;
+        R(-brim, 1.69, brim, 1.72, o.hat);
+        R(-0.1, 1.72, 0.1, 1.82, o.hat);
+      }
     }
     c.restore();
   }
