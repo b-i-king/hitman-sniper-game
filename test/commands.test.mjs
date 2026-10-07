@@ -41,13 +41,43 @@ test('result and pause commands', () => {
   assert.deepEqual(parseCommands('resume'), [{ type: 'resume' }]);
 });
 
-test("nothing Ghost says is read as an order to shoot", async () => {
-  // Without headphones the mic can hear Ghost; his lines must never parse as "fire".
-  const lines = ['Holding.', 'Chambering. One second.', 'Civilian crossing in front. Waiting for a clean line.',
-    "Copy. I'll take it when it's clear.", 'Sending.', 'In position. Glass up, tell me what you see.',
-    "No shot, I can't see him.", 'Hit. Target is down.', 'Miss! He\'s running left, about 3 meters a second. Call it!'];
+test('nothing Ghost says is read as an order to shoot', async () => {
+  // Without headphones the mic can hear Ghost, so none of his lines may parse as "fire"
+  // (or "stand by"/"abort", which would cancel a pending shot). Scan every line in the source,
+  // both as written and as spoken on the radio.
+  const { readFileSync } = await import('node:fs');
+  const { radioSpeech } = await import('../public/js/audio.js');
+  const src = ['public/js/main.js', 'public/js/sniper.js'].map((f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')).join('\n')
+    .replace(/function showHint[\s\S]*?\n}\n/, ''); // the hint is what the *spotter* should say
+  const lines = [...src.matchAll(/(?:sniperSay|voices\.say|say:|\? |: )\s*\(?\s*(['"`])((?:(?!\1).)*)\1/g)]
+    .map((m) => m[2].replace(/\$\{[^}]*\}/g, '3'))
+    .filter((l) => /[A-Za-z]{3}/.test(l) && /[.!?]$/.test(l));
+  assert.ok(lines.length > 25, `found ${lines.length} lines`);
+  for (const l of lines) {
+    for (const said of [l, radioSpeech(l)]) {
+      const types = parseCommands(said).map((c) => c.type);
+      assert.ok(!types.some((t) => ['fire', 'fireWhenReady', 'cancel'].includes(t)), `"${said}" -> ${types}`);
+    }
+  }
+});
+
+test('nothing the target says is read as an order', async () => {
+  const { LEVELS } = await import('../public/js/levels.js');
+  const { generateLevel } = await import('../public/js/endless.js');
+  const lines = new Set(["I'm hit! Get me out of here!", 'Sniper! Move!', 'Sniper! Get me out of here!']);
+  for (const L of LEVELS) L.target.lines.forEach((l) => lines.add(l));
+  for (let r = 0; r < 40; r++) generateLevel(r, 3).target.lines.forEach((l) => lines.add(l));
   for (const l of lines) {
     const types = parseCommands(l).map((c) => c.type);
-    assert.ok(!types.includes('fire') && !types.includes('fireWhenReady'), `${l} -> ${types}`);
+    assert.ok(!types.some((t) => ['fire', 'fireWhenReady', 'cancel'].includes(t)), `"${l}" -> ${types}`);
   }
+});
+
+test('radio procedure: digits and niner', async () => {
+  const { radioSpeech } = await import('../public/js/audio.js');
+  assert.equal(radioSpeech('Range 450, roger.'), 'Range four five zero, roger.');
+  assert.equal(radioSpeech('Lead 2.5'), 'Lead 2 point five');
+  assert.equal(radioSpeech('Tango 9'), 'Tango niner');
+  assert.deepEqual(parseCommands('tango three range four five zero'), [{ type: 'range', value: 450 }, { type: 'target', id: 3 }]);
+  assert.deepEqual(parseCommands('range niner zero zero'), [{ type: 'range', value: 900 }]);
 });

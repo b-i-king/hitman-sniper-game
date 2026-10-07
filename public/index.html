@@ -46,7 +46,7 @@
           <details>
             <summary>What can I say?</summary>
             <table class="cmds">
-              <tr><td>"Target three"</td><td>Pick the person with that number tag</td></tr>
+              <tr><td>"Target three" / "Tango three"</td><td>Pick the person with that number tag</td></tr>
               <tr><td>"Range six hundred"</td><td>Distance in meters (gravity drop)</td></tr>
               <tr><td>"Wind eight from the right"</td><td>Crosswind in mph and where it comes from</td></tr>
               <tr><td>"Temperature fifteen"</td><td>°F: cold air = more drop, hot air = less</td></tr>
@@ -68,6 +68,7 @@
               </select>
             </label>
             <label class="check"><input type="checkbox" id="headphones" /> I'm wearing headphones (keep the mic open while the sniper talks)</label>
+            <label class="check"><input type="checkbox" id="radioFx" checked /> Military radio effect on Ghost's voice (static, squelch, numbers read digit by digit)</label>
             <div class="services" id="services"></div>
           </div>
         </div>
@@ -82,7 +83,7 @@
             <li><b>Turn on your mic.</b> Click <b>MIC</b> at the bottom (or press <kbd>M</kbd>) and allow microphone access. Use Chrome or Edge. Headphones help, so the mic doesn't hear Ghost. No mic? Type the same words in the box at the bottom.</li>
             <li><b>Read the briefing.</b> It tells you who the target is (suit, tie, glasses, hat) and what the weather is doing. Say <q>start mission</q>.</li>
             <li><b>Look through your binoculars.</b> Drag the view or use the arrow keys to scan, and scroll to zoom. Every person has a number tag. Press <kbd>B</kbd> to lower the binoculars and see Ghost lying next to you.</li>
-            <li><b>Name the target.</b> <q>Target three.</q> Ghost tells you what he sees through his scope ("black suit, red tie"). If that's not your man, pick again.</li>
+            <li><b>Name the target.</b> <q>Target three</q> or, radio style, <q>Tango three</q>.</li><li><b>Talk like it's a radio net if you like.</b> Numbers digit by digit work: <q>Range four five zero</q>, <q>niner</q> for 9. Ghost answers the same way.</li><li><b>Check Ghost's answer.</b> Ghost tells you what he sees through his scope ("black suit, red tie"). If that's not your man, pick again.</li>
             <li><b>Read the conditions</b> on the right and call them:
               <ul>
                 <li><b>Range</b>: <q>Range six hundred.</q> In <i>fog or heat haze</i> the laser can't get a reading, so measure on the binocular scale instead. A person is about 1.75 m tall, so <i>range = 1.75 × 1000 ÷ height in mils</i>.</li>

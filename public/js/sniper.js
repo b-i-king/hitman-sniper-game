@@ -73,30 +73,30 @@ export class Sniper {
     switch (cmd.type) {
       case 'target': {
         const p = this.world.byLabel(cmd.id);
-        if (!p) return { say: `I don't see a number ${cmd.id}.` };
+        if (!p) return { say: `No number ${cmd.id} in my glass.` };
         s.targetLabel = cmd.id;
         // Describe what he sees so the spotter can double-check the ID.
         const seen = describeOutfit(p.outfit);
-        return { say: `Number ${cmd.id}, I'm on him. ${seen[0].toUpperCase()}${seen.slice(1)}.` };
+        return { say: `Tango ${cmd.id}, eyes on. ${seen[0].toUpperCase()}${seen.slice(1)}.` };
       }
       case 'aim':
         s.part = cmd.part;
-        return { say: cmd.part === 'head' ? 'Going for the head.' : 'Center mass.' };
+        return { say: cmd.part === 'head' ? 'Head, roger.' : 'Center mass, roger.' };
       case 'range':
-        if (cmd.value < 20 || cmd.value > 2500) return { say: `Range ${cmd.value}? Say again.` };
+        if (cmd.value < 20 || cmd.value > 2500) return { say: `Range ${cmd.value}? Say again, spotter.` };
         s.range = cmd.value;
-        return { say: `Range ${cmd.value}.` };
+        return { say: `Range ${cmd.value}, roger.` };
       case 'wind':
-        if (cmd.value > 0 && !cmd.dir) return { say: `Wind ${fmt(cmd.value)}, from which side? Left or right?` };
+        if (cmd.value > 0 && !cmd.dir) return { say: `Wind ${fmt(cmd.value)} from which side? Left or right.` };
         s.wind = cmd.value;
         s.windDir = cmd.dir;
-        return { say: cmd.value === 0 ? 'No wind.' : `Wind ${fmt(cmd.value)}, from the ${cmd.dir}.` };
+        return { say: cmd.value === 0 ? 'No wind, roger.' : `Wind ${fmt(cmd.value)} from the ${cmd.dir}, roger.` };
       case 'temp':
         s.tempF = cmd.value;
-        return { say: `Temp ${cmd.value}.` };
+        return { say: `Temp ${cmd.value}, roger.` };
       case 'speed':
         s.speed = Math.abs(cmd.value);
-        return { say: s.speed === 0 ? 'No lead.' : `Leading at ${fmt(s.speed)}.` };
+        return { say: s.speed === 0 ? 'No lead, roger.' : `Lead ${fmt(s.speed)}, roger.` };
       case 'lead':
         s.lead = Math.abs(cmd.value);
         return { say: `Extra lead ${fmt(s.lead)} mils.` };
@@ -115,9 +115,9 @@ export class Sniper {
         s.waitingClear = false;
         return { say: 'Holding.', cancel: true }; // never say 'fire': the mic may hear it
       case 'fireWhenReady':
-        if (s.targetLabel == null) return { say: 'No target designated. Give me a number.' };
+        if (s.targetLabel == null) return { say: 'No tango designated. Give me a number.' };
         s.fireWhenReady = true;
-        return { say: "Copy. I'll take it when it's clear." };
+        return { say: 'Wilco. Taking it when the line is clear.' };
       case 'fire':
         return { fire: true };
       case 'status':
@@ -129,9 +129,9 @@ export class Sniper {
 
   readback(t) {
     const s = this.s;
-    if (s.targetLabel == null) return 'No target yet. Give me a number.';
+    if (s.targetLabel == null) return 'No tango yet. Give me a number.';
     const h = this.holds(t);
-    const parts = [`Target ${s.targetLabel}`];
+    const parts = [`Tango ${s.targetLabel}`];
     parts.push(s.range ? `range ${s.range}` : 'no range');
     if (s.wind) parts.push(`wind ${fmt(s.wind)} ${s.windDir}`);
     if (s.tempF != null) parts.push(`temp ${s.tempF}`);
