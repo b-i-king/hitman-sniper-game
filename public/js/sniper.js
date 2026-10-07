@@ -8,7 +8,7 @@ import { firingSolution, impactOffsetY, windDriftMeters, timeOfFlight, milsToMet
 const fmt = (n) => (Math.round(n * 10) / 10).toString();
 
 export function defaultSolution() {
-  return { targetLabel: null, part: 'chest', range: null, wind: 0, windDir: null, tempF: null, speed: 0, lead: 0, adjV: 0, adjH: 0, fireWhenReady: false };
+  return { targetLabel: null, part: 'chest', range: null, wind: 0, windDir: null, tempF: null, speed: 0, lead: 0, adjV: 0, adjH: 0, fireWhenReady: false, fireAsap: false };
 }
 
 export class Sniper {
@@ -111,6 +111,8 @@ export class Sniper {
         return { say: 'Corrections cleared.' };
       case 'cancel':
         s.fireWhenReady = false;
+        s.fireAsap = false;
+        s.waitingClear = false;
         return { say: 'Holding fire.', cancel: true };
       case 'fireWhenReady':
         if (s.targetLabel == null) return { say: 'No target designated. Give me a number.' };

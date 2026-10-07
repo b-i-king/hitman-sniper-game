@@ -28,7 +28,7 @@ const WEATHER_LABEL = {
 // --- state ------------------------------------------------------------------------------
 const game = {
   phase: 'menu', // menu | briefing | live | flight | result | final
-  mode: 'campaign', // campaign | endless
+  mode: 'endless', // endless (Survival, the default) | campaign (Training drills)
   levelIndex: 0,
   level: null,
   world: null,
@@ -113,15 +113,17 @@ function renderMenu() {
     const b = document.createElement('button');
     b.className = 'level';
     const moving = L.train ? 'moving train' : L.people.some((p) => p.isTarget && p.move) ? 'walking target' : 'stationary';
-    b.innerHTML = `<span class="n">${i + 1}</span><span><b>${L.name}</b><br><span class="meta">${L.distance} m · ${WEATHER_LABEL[L.weather].split(' -')[0].toLowerCase()} · ${moving} · ${L.people.length - 1} civilians · ${L.timeLimit}s</span></span><span class="diff">${L.difficulty}</span><span class="best">${best[L.id] != null ? `${best[L.id]}/100` : ''}</span>`;
+    b.innerHTML = `<span class="n">T${i + 1}</span><span><b>${L.name}</b><br><span class="meta">${L.distance} m · ${WEATHER_LABEL[L.weather].split(' -')[0].toLowerCase()} · ${moving} · ${L.people.length - 1} civilians · ${L.timeLimit}s</span></span><span class="diff">${L.difficulty}</span><span class="best">${best[L.id] != null ? `${best[L.id]}/100` : ''}</span>`;
     b.onclick = () => { game.mode = 'campaign'; openBriefing(LEVELS[i], i); };
     list.appendChild(b);
   });
+  const slot = $('survivalSlot');
+  slot.innerHTML = '';
   const e = document.createElement('button');
   e.className = 'level endless';
-  e.innerHTML = `<span class="n">∞</span><span><b>Endless Contracts</b><br><span class="meta">Random variations of all five missions, harder every round · ${ENDLESS_LIVES} lives</span></span><span class="diff">Survival</span><span class="best">${best.endless != null ? `best ${best.endless}` : ''}</span>`;
+  e.innerHTML = `<span class="n">∞</span><span><b>Start Survival</b><br><span class="meta">Endless contracts, harder every round · new targets, weather and trains · ${ENDLESS_LIVES} lives · press Enter or say "start mission"</span></span><span class="diff">Main mode</span><span class="best">${best.endless != null ? `best ${best.endless}` : ''}</span>`;
   e.onclick = startEndless;
-  list.appendChild(e);
+  slot.appendChild(e);
 
   const s = game.services;
   $('services').innerHTML = `Sniper voice: ${s.fishTts ? '<b>Fish Audio</b>' : '<b class="off">browser voice</b> (run the server with FISH_API_KEY for Fish Audio)'} · Fish STT: ${s.fishStt ? '<b>ready</b>' : '<b class="off">off</b>'} · AI interpreter: ${s.llm ? '<b>on</b>' : '<b class="off">off</b> (built-in parser)'}`;
@@ -163,7 +165,7 @@ function openBriefing(L, index) {
 
   const endless = game.mode === 'endless';
   $('briefCodename').textContent = L.codename;
-  $('briefName').textContent = endless ? L.name : `Mission ${index + 1}: ${L.name}`;
+  $('briefName').textContent = endless ? L.name : `Training ${index + 1}: ${L.name}`;
   $('briefDiff').textContent = `${L.difficulty} · ${L.rangefinder ? `${L.distance} m` : 'range unknown'} · ${WEATHER_LABEL[L.weather]} · ${L.timeLimit} s`;
   $('briefScene').textContent = L.scene;
   $('briefTarget').textContent = L.target.name;
@@ -174,7 +176,7 @@ function openBriefing(L, index) {
   drawPortrait($('portraitSmall'), game.world.target.outfit);
   $('dName').textContent = L.target.name;
   $('dDesc').textContent = L.target.description;
-  $('missionName').textContent = endless ? `${L.codename} · ${L.difficulty}` : `${index + 1}. ${L.name} · ${L.difficulty}`;
+  $('missionName').textContent = endless ? `SURVIVAL · ${L.codename} · ${L.difficulty}` : `TRAINING ${index + 1} · ${L.name}`;
   $('timer').textContent = L.timeLimit;
   $('timer').classList.remove('urgent');
   $('livesStat').classList.toggle('hidden', !endless);
@@ -232,7 +234,7 @@ function execute(cmds) {
   const say = [];
   let fire = false;
   for (const c of cmds) {
-    if (c.type === 'start') { if (game.phase === 'briefing') startMission(); else if (game.phase === 'menu') openBriefing(LEVELS[game.levelIndex], game.levelIndex); continue; }
+    if (c.type === 'start') { if (game.phase === 'briefing') startMission(); else if (game.phase === 'menu') startEndless(); continue; }
     if (c.type === 'next') { if (game.phase === 'result') nextMission(); continue; }
     if (c.type === 'retry') { if (game.phase === 'result' && game.mode === 'campaign') openBriefing(game.level, game.levelIndex); continue; }
     if (c.type === 'hint') { if (game.phase === 'live') showHint(); continue; }
@@ -313,6 +315,18 @@ function fireShot() {
     return;
   }
   if (!world.isVisible(tgt, game.t)) { sniperSay("No shot, I can't see him."); return; }
+  // Rifle still swinging onto a new target or hold: squeeze off as soon as it settles.
+  if (!aimSettled()) { sniper.s.fireAsap = true; return; }
+  // A civilian crossing right in front: hold, and fire the moment he is clear.
+  const ts = world.personState(tgt, game.t);
+  const blocked = world.people.some((p) => p !== tgt && p.car == null && p.fallenAt == null
+    && Math.abs(world.personState(p, game.t).x - ts.x) < 0.6 && Math.abs(p.y - tgt.y) < 1);
+  if (blocked) {
+    if (!sniper.s.waitingClear) sniperSay("Civilian crossing in front. I'll fire when he's clear.");
+    sniper.s.waitingClear = true;
+    sniper.s.fireAsap = true;
+    return;
+  }
   if (!sniper.s.range && game.shots === 0) log('sniper', 'No range called, holding my 100 meter zero.');
   const aim = game.aim || sniper.aimPoint(game.t);
   const imp = sniper.impact(aim, game.t);
@@ -328,11 +342,20 @@ function fireShot() {
   };
   game.shots++;
   sniper.s.fireWhenReady = false;
+  sniper.s.fireAsap = false;
+  sniper.s.waitingClear = false;
   game.phase = 'flight';
   game.flash = 0.55;
   sfx.gunshot();
   voices.say('Sending.', 'sniper');
   log('sniper', 'Sending.');
+}
+
+/** True once the rifle has finished swinging onto the commanded aim point. */
+function aimSettled() {
+  if (!game.aimRaw) return false;
+  const goal = game.sniper.aimPoint(game.t); // the current goal, including holds just called
+  return Math.hypot(goal.x - game.aimRaw.x, goal.y - game.aimRaw.y) < milsToMeters(0.08, game.world.distance);
 }
 
 /** Civilians scatter away from the shot. */
@@ -493,7 +516,7 @@ function showResult(result, hit) {
   } else {
     $('retryBtn').classList.remove('hidden');
     const last = game.levelIndex >= LEVELS.length - 1;
-    $('nextBtn').textContent = last ? 'FINISH CAMPAIGN' : passed ? 'NEXT MISSION' : 'SKIP TO NEXT';
+    $('nextBtn').textContent = last ? 'FINISH TRAINING' : passed ? 'NEXT DRILL' : 'SKIP TO NEXT';
   }
   showModal('resultModal');
 }
@@ -515,14 +538,14 @@ function showFinal() {
     const e = game.endless;
     saveBest('endless', e.score);
     const done = e.log.filter((r) => r.score >= PASS_SCORE).length;
-    $('finalKicker').textContent = 'OUT OF LIVES';
+    $('finalKicker').textContent = 'SURVIVAL OVER · OUT OF LIVES';
     $('finalScore').textContent = `${e.score}`;
     const rank = done >= 15 ? 'Legendary Spotter' : done >= 10 ? 'Elite Spotter' : done >= 6 ? 'Marksman' : done >= 3 ? 'Field Agent' : 'Rookie';
     $('finalRank').textContent = `${rank} · ${done} contract${done === 1 ? '' : 's'} completed`;
     $('finalTable').innerHTML = e.log.map((r) => `<tr><td>${r.name}</td><td class="${r.score >= PASS_SCORE ? 'ok' : 'bad'}">${r.score}</td></tr>`).join('');
   } else {
     const total = LEVELS.reduce((a, _, i) => a + (game.results[i] || 0), 0);
-    $('finalKicker').textContent = 'CAMPAIGN COMPLETE';
+    $('finalKicker').textContent = 'TRAINING COMPLETE';
     $('finalScore').textContent = `${total}`;
     const rank = total >= 470 ? 'Legendary Spotter' : total >= 400 ? 'Elite Spotter' : total >= 300 ? 'Marksman' : total >= 150 ? 'Field Agent' : 'Rookie';
     $('finalRank').textContent = `${rank} · ${total} / ${LEVELS.length * 100}`;
@@ -604,12 +627,11 @@ function frame(now) {
     game.lastGoal = goal;
     game.aim = { x: game.aimRaw.x + Math.sin(game.t * 1.3) * sway, y: game.aimRaw.y + Math.sin(game.t * 0.9 + 1) * sway };
 
-    if (game.phase === 'live' && sniper.s.fireWhenReady && sniper.target) {
+    if (game.phase === 'live' && (sniper.s.fireWhenReady || sniper.s.fireAsap) && sniper.target) {
       const tgt = sniper.target;
-      const settled = Math.hypot(goal.x - game.aimRaw.x, goal.y - game.aimRaw.y) < milsToMeters(0.08, D);
       const ready = !game.followUp || game.t >= game.followUp.readyAt;
-      const margin = game.followUp ? 0 : world.viewHalfWidth() * 0.45;
-      if (ready && settled && world.isVisible(tgt, game.t, margin)) fireShot();
+      const margin = game.followUp || sniper.s.fireAsap ? 0 : world.viewHalfWidth() * 0.45;
+      if (ready && aimSettled() && world.isVisible(tgt, game.t, margin)) fireShot();
     }
     if (game.phase === 'flight' && game.t >= game.flight.t0 + game.flight.tof) resolveImpact();
 
@@ -732,7 +754,8 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'z' || e.key === 'Z') setZoom((game.zoom + 1) % ZOOMS.length);
   if (e.key === 'c' || e.key === 'C') game.look = { x: 0, y: 0 };
   if (e.key === 'Enter') {
-    if (game.phase === 'briefing') startMission();
+    if (game.phase === 'menu' && !$('menuModal').classList.contains('hidden')) startEndless();
+    else if (game.phase === 'briefing') startMission();
     else if (game.phase === 'result' && !$('resultModal').classList.contains('hidden')) nextMission();
   }
   if (e.key === 'Escape') $('menuBtn').click();
