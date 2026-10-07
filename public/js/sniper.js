@@ -77,7 +77,8 @@ export class Sniper {
         s.targetLabel = cmd.id;
         // Describe what he sees so the spotter can double-check the ID.
         const seen = describeOutfit(p.outfit);
-        return { say: `Tango ${cmd.id}, eyes on. ${seen[0].toUpperCase()}${seen.slice(1)}.` };
+        const moving = Math.abs(this.world.personState(p, t).vx) > 0.05;
+        return { say: `Tango ${cmd.id}, eyes on${moving ? ', tracking' : ''}. ${seen[0].toUpperCase()}${seen.slice(1)}.` };
       }
       case 'aim':
         s.part = cmd.part;
@@ -89,6 +90,7 @@ export class Sniper {
       case 'wind':
         if (cmd.value > 0 && !cmd.dir) return { say: `Wind ${fmt(cmd.value)} from which side? Left or right.` };
         s.wind = cmd.value;
+        s.windCalled = true;
         s.windDir = cmd.dir;
         return { say: cmd.value === 0 ? 'No wind, roger.' : `Wind ${fmt(cmd.value)} from the ${cmd.dir}, roger.` };
       case 'temp':
@@ -96,6 +98,7 @@ export class Sniper {
         return { say: `Temp ${cmd.value}, roger.` };
       case 'speed':
         s.speed = Math.abs(cmd.value);
+        s.speedCalled = true;
         return { say: s.speed === 0 ? 'No lead, roger.' : `Lead ${fmt(s.speed)}, roger.` };
       case 'lead':
         s.lead = Math.abs(cmd.value);

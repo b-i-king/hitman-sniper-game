@@ -224,7 +224,7 @@ function startMission() {
   log('system', `${L.codename} - find ${L.target.name}: ${L.target.description}`);
   sniperSay(L.rangefinder ? 'Ghost in position. Glass is yours, spotter. Give me a tango.' : 'Ghost in position. Laser is down, no return. Range it on the glass.');
   setTimeout(() => game.phase === 'live' && targetSay(L.target.lines[0]), 2600);
-  if (voiceInput.mode === 'browser' && !voiceInput.enabled && VoiceInput.browserSupported()) voiceInput.start();
+  if (voiceInput.mode === 'browser' && !$('pttOnly').checked && !voiceInput.enabled && VoiceInput.browserSupported()) voiceInput.start();
 }
 
 // --- commands -----------------------------------------------------------------------------
@@ -257,7 +257,11 @@ async function handleUtterance(text, { typed = false } = {}) {
     }
   }
   if (!cmds.length) {
-    if (game.phase === 'live') sniperSay('Say again, spotter.');
+    if (game.phase === 'live') {
+      sniperSay('Say again, spotter.');
+      game.coachMiss = { text, until: performance.now() + 6000 };
+      renderCoach();
+    }
     return;
   }
   execute(cmds);
@@ -469,6 +473,9 @@ function resolveImpact() {
   if (followUp) {
     banner('TARGET ESCAPED', 'bad', 2200);
     sniperSay(wounded ? 'Hit again, tango still moving. Lost him.' : 'Miss again. Tango is gone.');
+    // A follow-up that wounds still counts as a wound (scaled like any follow-up).
+    const second = Math.round(first.score * FOLLOW_UP_FACTOR);
+    if (second > followUp.first.score) return finish({ ...first, score: second, verdict: `Follow-up: ${first.verdict}` }, hit);
     return finish({ ...followUp.first, verdict: `${followUp.first.verdict} (follow-up ${wounded ? 'did not drop him' : 'missed'})` }, hit);
   }
   if (tgt.car == null) {
@@ -626,6 +633,90 @@ function showFinal() {
   showModal('finalModal');
 }
 
+// --- coach: what to say next ---------------------------------------------------------------
+const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const q = (t) => `<span class="say-chip">“${esc(t)}”</span>`;
+
+/** The next step for the spotter, from what Ghost has and hasn't been told yet. */
+function coachTip() {
+  const { world, sniper } = game;
+  const s = sniper.s;
+  const L = world.level;
+  const D = world.distance;
+  const t = game.t;
+  const tgt = sniper.target;
+  const wind = world.windAt(t);
+  const windDir = wind < 0 ? 'right' : 'left';
+  const train = !!L.train;
+  if (game.followUp) {
+    const sp = Math.abs(world.personState(world.target, t).vx);
+    return { step: 'FOLLOW-UP', text: `He survived and is running at about ${fmt(sp)} m/s. Call the lead, aim center mass (a bigger target on a runner) and shoot before he is out of sight.`, say: [`Moving at ${fmt(sp)}, center mass, send it`] };
+  }
+  if (s.targetLabel == null) {
+    return { step: '1 · IDENTIFY', text: `Scan the binoculars (drag or arrow keys, scroll to zoom). Find the person who matches: ${L.target.description}`, say: ['Target <number>', 'Tango <number>'] };
+  }
+  if (!s.range) {
+    return L.rangefinder
+      ? { step: '2 · RANGE', text: `The laser rangefinder reads ${D} m (Spotter Data).`, say: [`Range ${D}`] }
+      : { step: '2 · RANGE', text: 'No laser reading. Measure the target on the binocular scale: a person is about 1.75 m tall, so range = 1750 ÷ his height in mils.', say: ['Range <meters>'] };
+  }
+  if (!s.windCalled && Math.abs(wind) >= 1) {
+    return { step: '3 · WIND', text: `The wind meter reads about ${Math.round(Math.abs(wind))} mph, coming from the ${windDir}. It gusts, so check it right before you call.`, say: [`Wind ${Math.round(Math.abs(wind))} from the ${windDir}`] };
+  }
+  const calledX = !s.wind || !s.windDir ? 0 : s.windDir === 'right' ? -s.wind : s.wind;
+  if (s.windCalled && Math.abs(calledX - wind) > 1.5) {
+    return { step: 'WIND SHIFT', text: `The wind changed since your call. The meter now reads about ${Math.round(Math.abs(wind))} mph from the ${windDir}. Update it before you shoot.`, say: [Math.abs(wind) < 1 ? 'No wind' : `Wind ${Math.round(Math.abs(wind))} from the ${windDir}`] };
+  }
+  if (s.tempF == null && Math.abs(L.tempF - 59) >= 10) {
+    return { step: '4 · TEMPERATURE', text: `It is ${L.tempF}°F. ${L.tempF < 59 ? 'Cold air makes the bullet drop more.' : 'Hot air makes the bullet drop less.'}`, say: [`Temperature ${L.tempF}`] };
+  }
+  const moving = tgt && Math.abs(world.personState(tgt, t).vx) > 0.05;
+  if ((moving || train) && !s.speed && !s.lead && !s.speedCalled) {
+    return train
+      ? { step: '5 · LEAD', text: 'The train is moving. Ghost tracks your pick through the windows. Give him the train speed from the intel so he aims ahead.', say: [`Moving at ${L.train.speed}`] }
+      : { step: '5 · LEAD', text: 'Your pick is walking. Ghost keeps his crosshair on him as he moves. Give his speed so Ghost aims ahead of him, or wait until he stops. Any nudge ("a little left") moves with him too.', say: ['Moving at 1', 'or wait, then: Send it'] };
+  }
+  const say = [train ? 'Fire when ready' : 'Send it'];
+  if (s.part !== 'head' && D < 700) say.unshift('Go for the head');
+  if (moving && !train && !s.speed && !s.lead) {
+    return { step: 'WAIT', text: 'No lead dialed and he is still walking. Wait until he stops, then give the order (or call his speed).', say: ['Send it', 'Moving at 1'] };
+  }
+  return {
+    step: 'READY',
+    text: s.part !== 'head'
+      ? (D >= 700 ? 'Solution dialed. Center mass is the safe call at this range, but a body shot can fail. Give the order.' : 'Solution dialed. A body shot can fail and he may run. Call the head first for a sure kill, then give the order.')
+      : `${train ? 'Solution dialed. Ghost will shoot as the window lines up.' : 'Solution dialed. Give the order.'}${D >= 700 ? ' Long shot: the head is tiny at this range. Center mass is safer but may not kill.' : ''}`,
+    say,
+  };
+}
+
+function renderCoach() {
+  const on = $('coachOn').checked;
+  $('coachBox').classList.toggle('hidden', !on);
+  if (!on || !game.world) return;
+  if (game.phase !== 'live' && game.phase !== 'flight') {
+    $('coachStep').textContent = '';
+    $('coachText').textContent = game.phase === 'briefing' ? 'Read the briefing, then say “start mission” (or press Enter).' : 'Say “retry”, “next mission” or “new contract”.';
+    $('coachSay').innerHTML = '';
+    $('coachCheck').classList.add('hidden');
+    $('coachFine').textContent = '';
+    return;
+  }
+  const miss = game.coachMiss && performance.now() < game.coachMiss.until ? game.coachMiss : null;
+  const tip = coachTip();
+  $('coachStep').textContent = miss ? 'NOT UNDERSTOOD' : tip.step;
+  $('coachText').textContent = miss ? `Ghost didn't catch “${miss.text}”. Use short calls like these:` : tip.text; // textContent: safe for anything the mic heard
+  $('coachSay').innerHTML = tip.say.map(q).join(' ');
+  // After a pick: put what Ghost sees next to the dossier, so a wrong pick stands out.
+  const check = $('coachCheck');
+  const tgt = game.sniper.target;
+  if (tgt && !game.followUp) {
+    check.innerHTML = `Ghost is on #${tgt.label}: <b>${esc(describeOutfit(tgt.outfit))}</b><br>Dossier: <b>${esc(game.level.target.description)}</b><br>No match? Say another number.`;
+    check.classList.remove('hidden');
+  } else check.classList.add('hidden');
+  $('coachFine').innerHTML = `Fine-tune anytime: ${q('move right')} ${q('a little higher')} ${q('two clicks left')} ${q('hold fire')}`;
+}
+
 // --- HUD ---------------------------------------------------------------------------------
 let hudTick = 0;
 function updateHud(force = false) {
@@ -657,6 +748,7 @@ function updateHud(force = false) {
     '<span>Corrections</span>', v(s.adjV || s.adjH ? `${fmt(s.adjV)}↕ ${fmt(s.adjH)}↔ mil` : null, 'none'),
     '<span>Hold</span>', `<span class="hold">${h.elevation >= 0 ? '↑' : '↓'} ${fmt(Math.abs(h.elevation))}  ${h.windage >= 0 ? '→' : '←'} ${fmt(Math.abs(h.windage))} mils</span>`,
   ].join('');
+  renderCoach();
   const tag = $('sReady');
   tag.textContent = game.followUp ? 'FOLLOW-UP!' : s.fireWhenReady ? 'FIRE WHEN READY' : s.targetLabel != null ? 'ON TARGET' : '';
   tag.className = `tag ${s.fireWhenReady || game.followUp ? 'armed' : ''}`;
@@ -759,7 +851,7 @@ const voiceInput = new VoiceInput({
     const btn = $('micBtn');
     btn.classList.toggle('on', state === 'listening');
     btn.classList.toggle('rec', state === 'recording');
-    const labels = { listening: 'LISTENING', recording: 'RECORDING', transcribing: 'TRANSCRIBING…', idle: voiceInput.mode === 'fish' ? 'HOLD TO TALK' : 'MIC OFF', error: 'MIC ERROR', unsupported: 'NO SPEECH API' };
+    const labels = { listening: voiceInput.ptt ? 'TALK…' : 'LISTENING', recording: 'RECORDING', transcribing: 'TRANSCRIBING…', idle: voiceInput.mode === 'fish' ? 'HOLD TO TALK' : 'MIC OFF', error: 'MIC ERROR', unsupported: 'NO SPEECH API' };
     $('micLabel').textContent = labels[state] || state;
     if (detail) { $('transcript').textContent = detail; log('system', detail); }
   },
@@ -767,6 +859,15 @@ const voiceInput = new VoiceInput({
 
 // --- UI events ------------------------------------------------------------------------------
 $('radioFx').onchange = (e) => { voices.radio = e.target.checked; };
+$('soundBtn').onclick = () => {
+  const muted = !voices.muted;
+  voices.muted = muted;
+  sfx.setMuted(muted);
+  if (muted) voices.stopAll();
+  $('soundBtn').textContent = muted ? '🔇 SOUND OFF' : '🔊 SOUND';
+  $('soundBtn').setAttribute('aria-pressed', String(muted));
+};
+$('coachOn').onchange = () => renderCoach();
 $('voiceMode').onchange = (e) => {
   voiceInput.setMode(e.target.value);
   if (e.target.value === 'fish' && !game.services.fishStt) log('system', 'Fish STT needs the server running with FISH_API_KEY set.');
@@ -820,7 +921,8 @@ canvas.addEventListener('dblclick', () => { game.look = { x: 0, y: 0 }; });
 window.addEventListener('keydown', (e) => {
   const typing = document.activeElement === $('typeInput');
   if (typing) { if (e.key === 'Escape') $('typeInput').blur(); return; }
-  if (e.code === 'Space' && voiceInput.mode === 'fish') { e.preventDefault(); if (!e.repeat) voiceInput.pttDown(); return; }
+  // Hold Space to talk (both voice modes); release to send.
+  if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) { sfx.unlock(); voiceInput.pttDown(); } return; }
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) { keys[e.key] = true; e.preventDefault(); }
   if (e.key === 'm' || e.key === 'M') { sfx.unlock(); if (voiceInput.mode === 'browser') voiceInput.toggle(); }
   if (e.key === 'f' || e.key === 'F') execute([{ type: 'fire' }]);
@@ -829,6 +931,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'z' || e.key === 'Z') setZoom((game.zoom + 1) % ZOOMS.length);
   if (e.key === 'c' || e.key === 'C') game.look = { x: 0, y: 0 };
   if (e.key === 'p' || e.key === 'P') setPaused(!game.paused);
+  if (e.key === 'n' || e.key === 'N') $('soundBtn').click();
   if (e.key === 'Enter') {
     if (game.phase === 'menu' && !$('menuModal').classList.contains('hidden')) startEndless();
     else if (game.phase === 'briefing') startMission();
@@ -842,7 +945,7 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   keys[e.key] = false;
-  if (e.code === 'Space' && voiceInput.mode === 'fish') voiceInput.pttUp();
+  if (e.code === 'Space' && document.activeElement !== $('typeInput')) { e.preventDefault(); voiceInput.pttUp(); }
 });
 window.addEventListener('resize', () => {
   renderer.resize();
@@ -866,4 +969,4 @@ async function boot() {
 boot();
 
 // Exposed for automated play-testing.
-window.__spotter = { game };
+window.__spotter = { game, voiceInput };

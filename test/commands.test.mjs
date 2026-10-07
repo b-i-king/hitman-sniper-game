@@ -48,7 +48,9 @@ test('nothing Ghost says is read as an order to shoot', async () => {
   const { readFileSync } = await import('node:fs');
   const { radioSpeech } = await import('../public/js/audio.js');
   const src = ['public/js/main.js', 'public/js/sniper.js'].map((f) => readFileSync(new URL(`../${f}`, import.meta.url), 'utf8')).join('\n')
-    .replace(/function showHint[\s\S]*?\n}\n/, ''); // the hint is what the *spotter* should say
+    .replace(/function showHint[\s\S]*?\n}\n/, '') // the hint is what the *spotter* should say
+    .replace(/function showResult[\s\S]*?\n}\n/, '') // debrief tips are on screen, never spoken
+    .replace(/function coachTip[\s\S]*?\n}\n/, ''); // coach tips are on screen, never spoken
   const lines = [...src.matchAll(/(?:sniperSay|voices\.say|say:|\? |: )\s*\(?\s*(['"`])((?:(?!\1).)*)\1/g)]
     .map((m) => m[2].replace(/\$\{[^}]*\}/g, '3'))
     .filter((l) => /[A-Za-z]{3}/.test(l) && /[.!?]$/.test(l));
@@ -80,4 +82,27 @@ test('radio procedure: digits and niner', async () => {
   assert.equal(radioSpeech('Tango 9'), 'Tango niner');
   assert.deepEqual(parseCommands('tango three range four five zero'), [{ type: 'range', value: 450 }, { type: 'target', id: 3 }]);
   assert.deepEqual(parseCommands('range niner zero zero'), [{ type: 'range', value: 900 }]);
+});
+
+test('everyday and dialect phrasings', () => {
+  const p = (t) => parseCommands(t);
+  assert.deepEqual(p('move right'), [{ type: 'adjust', axis: 'h', value: 0.5 }]);
+  assert.deepEqual(p('move down a little'), [{ type: 'adjust', axis: 'v', value: -0.2 }]);
+  assert.deepEqual(p('a little higher'), [{ type: 'adjust', axis: 'v', value: 0.2 }]);
+  assert.deepEqual(p('way more left'), [{ type: 'adjust', axis: 'h', value: -1 }]);
+  assert.deepEqual(p('two clicks left'), [{ type: 'adjust', axis: 'h', value: -0.2 }]);
+  assert.deepEqual(p('right 3 clicks'), [{ type: 'adjust', axis: 'h', value: 0.3 }]);
+  assert.deepEqual(p('bump it up'), [{ type: 'adjust', axis: 'v', value: 0.5 }]);
+  assert.deepEqual(p('lower the binoculars'), [{ type: 'binoculars', up: false }]);
+  assert.deepEqual(p("don't fire"), [{ type: 'cancel' }]);
+  assert.deepEqual(p('wait'), [{ type: 'cancel' }]);
+  assert.deepEqual(p('take it'), [{ type: 'fire' }]);
+  assert.deepEqual(p('take it when ready'), [{ type: 'fireWhenReady' }]);
+  assert.deepEqual(p('drop the hammer'), [{ type: 'fire' }]);
+  assert.deepEqual(p('range 500 yards'), [{ type: 'range', value: 460 }]);
+  assert.deepEqual(p('temperature 10 celsius'), [{ type: 'temp', value: 50 }]);
+  assert.deepEqual(p('moving at 9 mph'), [{ type: 'speed', value: 4 }]);
+  assert.deepEqual(p('train doing 14 km/h'), [{ type: 'speed', value: 3.9 }]);
+  assert.deepEqual(p('aim for his face'), [{ type: 'aim', part: 'head' }]);
+  assert.deepEqual(p('hvt is number 4'), [{ type: 'target', id: 4 }]);
 });
