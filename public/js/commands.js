@@ -24,7 +24,7 @@
 
 const UNITS = {
   zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
-  nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+  nine: 9, niner: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
   sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19,
 };
 const TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
@@ -93,10 +93,17 @@ export function normalize(text) {
     out.push(String(value));
     i = j - 1;
   }
-  return ` ${out.join(' ')} `
+  return joinRadioDigits(` ${out.join(' ')} `)
     .replace(/(\d) point (\d)/g, '$1.$2')
     .replace(/(\d) (?:and )?0\.5\b/g, (_, d) => `${d}.5`)
     .replace(/(\d)\.5\.5/g, '$1.5');
+}
+
+/** Radio-style digits: "range four five zero" -> "range 450", "wind one two" -> "wind 12". */
+function joinRadioDigits(s) {
+  return s
+    .replace(/\b(\d) (\d) (\d)\b/g, '$1$2$3')
+    .replace(/\b(range|distance|wind|winds|temperature|temp|speed|at|target|tango|number) (\d) (\d)\b(?! \d)/g, '$1 $2$3');
 }
 
 function num(token) {

@@ -39,6 +39,18 @@ Press **Enter** on the menu to start **Survival**, the main mode. New players ca
 
 You can say the whole call in one breath: *"Target two, range four fifty, wind six from the right, go for the head, send it."*
 
+### Radio style
+
+Ghost talks like a sniper on a military radio net: *"Tango three, eyes on. Black suit, red
+tie."*, *"Good copy."*, *"Shot out."*, *"Headshot. Tango down."*. You hear static when he
+keys the mic and a squelch tail when he un-keys, and long numbers are read digit by digit
+("four five zero", "niner"). You can talk the same way: *"Tango three, range four five zero,
+wind one two from the right, send it."* Turn the radio effect off in the menu settings.
+
+With Fish Audio (local server) his voice also runs through a handheld-radio filter. With the
+browser's built-in voice (GitHub Pages) you get the static, squelch and radio wording, but the
+voice itself can't be filtered.
+
 ### Scoring (0 to 100)
 
 | Hit | Score | What happens |
@@ -111,7 +123,7 @@ The debrief compares what you called with the real values and tells you what to 
 
 | Say | Effect |
 |---|---|
-| "Target three" | Designate the person with number tag 3 |
+| "Target three" / "Tango three" | Designate the person with number tag 3 |
 | "Range six hundred" | Range in meters |
 | "Wind eight from the right" / "wind 8 right to left" | Crosswind (mph) and the side it comes from |
 | "Temperature fifteen" | Air temperature (°F) |

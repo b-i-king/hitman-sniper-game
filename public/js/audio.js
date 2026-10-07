@@ -61,6 +61,24 @@ export const sfx = {
   },
   impact() { burst({ dur: 0.15, freq: 500, gain: 0.5 }); },
   squelch() { burst({ dur: 0.07, freq: 2500, q: 2, gain: 0.25, type: 'bandpass' }); },
+  /** The burst of static when a radio un-keys at the end of a transmission. */
+  squelchTail() { burst({ dur: 0.22, freq: 2000, q: 0.8, gain: 0.32, type: 'bandpass' }); },
+  /** Low radio hiss under a transmission. Returns { stop }. */
+  radioBed(level = 0.035) {
+    const a = ac();
+    const src = a.createBufferSource();
+    src.buffer = noiseBuffer(2);
+    src.loop = true;
+    const f = a.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 1800;
+    f.Q.value = 0.7;
+    const g = a.createGain();
+    g.gain.value = level;
+    src.connect(f).connect(g).connect(a.destination);
+    src.start();
+    return { stop: () => { g.gain.setTargetAtTime(0, a.currentTime, 0.03); src.stop(a.currentTime + 0.2); } };
+  },
   beep(high = false) { tone({ freq: high ? 1320 : 880, dur: 0.09, gain: 0.12, type: 'square' }); },
   success() { [523, 659, 784, 1046].forEach((f, i) => tone({ freq: f, dur: 0.18, gain: 0.15, type: 'triangle', delay: i * 0.12 })); },
   fail() { [392, 311, 233].forEach((f, i) => tone({ freq: f, dur: 0.3, gain: 0.15, type: 'sawtooth', delay: i * 0.2 })); },
@@ -90,8 +108,32 @@ export const sfx = {
 
 // --- character voices ---------------------------------------------------------------
 
+// Radio procedure: long numbers are read digit by digit, and 9 is "niner".
+const RADIO_DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'niner'];
+const digits = (str) => str.split('').map((d) => RADIO_DIGITS[d]).join(' ');
+
+/** How a line sounds on the radio: "Range 450" -> "Range four five zero", "2.5" -> "two point five". */
+export function radioSpeech(text) {
+  return text.replace(/\d+(?:\.\d+)?/g, (m) => {
+    const [int, dec] = m.split('.');
+    const whole = int.length >= 3 ? digits(int) : int === '9' ? 'niner' : int;
+    return dec ? `${whole} point ${digits(dec)}` : whole;
+  });
+}
+
+/** Distortion curve for the radio's slightly overdriven speaker. */
+function radioCurve(k = 6) {
+  const n = 1024;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
+  }
+  return curve;
+}
+
 const BROWSER_VOICE = {
-  sniper: { pitch: 0.7, rate: 1.08 },
+  sniper: { pitch: 0.6, rate: 1.12 }, // low and clipped
   target: { pitch: 1.15, rate: 0.95 },
   handler: { pitch: 1.0, rate: 1.0 },
 };
@@ -104,6 +146,12 @@ export class Voices {
     this.playing = false;
     this.onSpeakingChange = () => {};
     this.muted = false;
+    this.radio = true; // military radio treatment for Ghost and intercepted comms
+  }
+
+  /** The exact words a character speaks (radio procedure for Ghost). */
+  spoken(text, who) {
+    return this.radio && who === 'sniper' ? radioSpeech(text) : text;
   }
 
   get speaking() {
@@ -115,7 +163,7 @@ export class Voices {
     if (!text || this.muted) return;
     if (who === 'sniper') this.queue = this.queue.filter((q) => q.who !== 'sniper');
     this.queue.push({ text, who });
-    if (this.useFish) this.prefetch(text, who);
+    if (this.useFish) this.prefetch(this.spoken(text, who), who);
     this.pump();
   }
 
@@ -145,9 +193,13 @@ export class Voices {
 
   async pump() {
     if (this.playing || !this.queue.length) return;
-    const { text, who } = this.queue.shift();
+    const item = this.queue.shift();
+    const who = item.who;
+    const text = this.spoken(item.text, who);
     this.setPlaying(true);
     sfx.squelch();
+    // Keyed radio: hiss under the voice (intercepts are noisier), squelch tail at the end.
+    const bed = this.radio ? sfx.radioBed(who === 'target' ? 0.06 : 0.03) : null;
     try {
       if (this.useFish) await this.playFish(text, who);
       else await this.playBrowser(text, who);
@@ -155,6 +207,7 @@ export class Voices {
       console.warn('[voice] Fish TTS failed, using browser voice:', err.message);
       try { await this.playBrowser(text, who); } catch { /* ignore */ }
     }
+    if (bed) { bed.stop(); sfx.squelchTail(); }
     this.setPlaying(false);
     this.pump();
   }
@@ -163,10 +216,30 @@ export class Voices {
     const url = await this.prefetch(text, who);
     await new Promise((resolve, reject) => {
       this.audio = new Audio(url);
+      if (this.radio) this.radioFilter(this.audio);
       this.audio.onended = resolve;
       this.audio.onerror = () => reject(new Error('audio playback failed'));
       this.audio.play().catch(reject);
     });
+  }
+
+  /** Route an <audio> element through a handheld-radio chain: narrow band plus a little grit. */
+  radioFilter(el) {
+    try {
+      const a = ac();
+      const src = a.createMediaElementSource(el);
+      const hp = a.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 380;
+      const lp = a.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 3000;
+      const drive = a.createWaveShaper();
+      drive.curve = radioCurve();
+      const g = a.createGain();
+      g.gain.value = 0.8;
+      src.connect(hp).connect(lp).connect(drive).connect(g).connect(a.destination);
+    } catch { /* play it dry */ }
   }
 
   playBrowser(text, who) {
@@ -178,7 +251,11 @@ export class Voices {
       u.rate = cfg.rate;
       const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('en'));
       if (voices.length) {
-        const pick = who === 'target' ? voices.find((v) => /female|zira|samantha|victoria|karen/i.test(v.name)) : voices.find((v) => /male|daniel|alex|david|fred|google uk english male/i.test(v.name));
+        // Ghost: a male voice, ideally British or US male. Note "female" contains "male".
+        const isMale = (v) => /\bmale\b|daniel|alex|david|fred|guy|ryan|christopher|eric|mark/i.test(v.name) && !/female/i.test(v.name);
+        const pick = who === 'target'
+          ? voices.find((v) => /female|zira|samantha|victoria|karen|aria|jenny/i.test(v.name))
+          : voices.find((v) => /uk english male/i.test(v.name)) || voices.find(isMale);
         u.voice = pick || voices[0];
       }
       u.onend = resolve;

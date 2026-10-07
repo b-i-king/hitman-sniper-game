@@ -222,7 +222,7 @@ function startMission() {
   $('log').innerHTML = '';
   const L = game.level;
   log('system', `${L.codename} - find ${L.target.name}: ${L.target.description}`);
-  sniperSay(L.rangefinder ? 'In position. Glass up, tell me what you see.' : 'In position. The laser is useless in this, you will have to range it on the glass.');
+  sniperSay(L.rangefinder ? 'Ghost in position. Glass is yours, spotter. Give me a tango.' : 'Ghost in position. Laser is down, no return. Range it on the glass.');
   setTimeout(() => game.phase === 'live' && targetSay(L.target.lines[0]), 2600);
   if (voiceInput.mode === 'browser' && !voiceInput.enabled && VoiceInput.browserSupported()) voiceInput.start();
 }
@@ -257,7 +257,7 @@ async function handleUtterance(text, { typed = false } = {}) {
     }
   }
   if (!cmds.length) {
-    if (game.phase === 'live') sniperSay('Say again?');
+    if (game.phase === 'live') sniperSay('Say again, spotter.');
     return;
   }
   execute(cmds);
@@ -295,14 +295,15 @@ function compactReadback(cmds) {
   const s = game.sniper.s;
   const has = (t) => cmds.some((c) => c.type === t);
   const bits = [];
-  if (has('target') && game.sniper.target) bits.push(`number ${s.targetLabel}, ${describeOutfit(game.sniper.target.outfit)}`);
+  if (has('target') && game.sniper.target) bits.push(`tango ${s.targetLabel}, ${describeOutfit(game.sniper.target.outfit)}`);
   if (has('range')) bits.push(`range ${s.range}`);
   if (has('wind')) bits.push(s.wind ? `wind ${fmt(s.wind)} ${s.windDir}` : 'no wind');
   if (has('temp')) bits.push(`temp ${s.tempF}`);
   if (has('speed')) bits.push(s.speed ? `lead ${fmt(s.speed)}` : 'no lead');
   if (has('aim')) bits.push(s.part === 'head' ? 'head' : 'center mass');
   if (has('adjust')) bits.push('corrections in');
-  return `Copy. ${bits.join(', ')}.`;
+  const line = bits.join(', ');
+  return `Good copy. ${line[0].toUpperCase()}${line.slice(1)}.`;
 }
 
 function setPaused(on) {
@@ -325,7 +326,7 @@ function showHint() {
   const parts = [`Target ${tgt.label}.`, `Range ${w.distance}.`];
   parts.push(Math.abs(wind) < 0.5 ? 'No wind.' : `Wind ${fmt(Math.abs(wind))} from the ${wind < 0 ? 'right' : 'left'}.`);
   parts.push(`Temperature ${w.level.tempF}.`);
-  if (w.level.train || tgt.move || tgt.flee) parts.push(speed > 0.05 ? `Moving at ${fmt(speed)}.` : 'Stationary (fire while he stands still).');
+  if (w.level.train || tgt.move || tgt.flee) parts.push(speed > 0.05 ? `Moving at ${fmt(speed)}.` : 'Stationary (take it while he stands still).');
   parts.push('Go for the head.');
   parts.push(w.level.train ? 'Fire when ready.' : 'Send it.');
   game.hintUsed = true;
@@ -347,7 +348,7 @@ function sniperInsights() {
     if (off && !insight.windWarned && t - (insight.windAt || 0) > 6) {
       insight.windWarned = true;
       insight.windAt = t;
-      sniperSay(`Wind's shifted, spotter. Flags say ${Math.abs(now) < 1 ? 'almost calm' : `more like ${Math.round(Math.abs(now))} from the ${now < 0 ? 'right' : 'left'}`}.`);
+      sniperSay(`Wind shift, spotter. Flags reading ${Math.abs(now) < 1 ? 'near calm' : `${Math.round(Math.abs(now))} from the ${now < 0 ? 'right' : 'left'}`}.`);
     }
     if (!off) insight.windWarned = false;
   }
@@ -356,7 +357,7 @@ function sniperInsights() {
     const moving = Math.abs(world.personState(tgt, t).vx) > 0.05;
     if (insight.moving !== undefined && moving !== insight.moving && t - (insight.moveAt || 0) > 2) {
       insight.moveAt = t;
-      sniperSay(moving ? `He's moving${s.speed ? '' : ', no lead dialed'}.` : `He's stopped${s.speed ? ', I still have lead on' : ''}.`);
+      sniperSay(moving ? `Tango moving${s.speed ? '' : ', no lead dialed'}.` : `Tango stopped${s.speed ? ', lead still dialed' : ''}.`);
     }
     insight.moving = moving;
   }
@@ -367,13 +368,13 @@ function fireShot() {
   if (game.phase !== 'live') return;
   const { world, sniper } = game;
   const tgt = sniper.target;
-  if (!tgt) { sniperSay('No target. Give me a number.'); return; }
+  if (!tgt) { sniperSay('No tango designated. Give me a number.'); return; }
   if (game.followUp && game.t < game.followUp.readyAt) {
     sniper.s.fireWhenReady = true;
     sniperSay('Chambering. One second.');
     return;
   }
-  if (!world.isVisible(tgt, game.t)) { sniperSay("No shot, I can't see him."); return; }
+  if (!world.isVisible(tgt, game.t)) { sniperSay('No shot. Lost visual.'); return; }
   // Rifle still swinging onto a new target or hold: squeeze off as soon as it settles.
   if (!aimSettled()) { sniper.s.fireAsap = true; return; }
   // A civilian crossing right in front: hold, and fire the moment he is clear.
@@ -381,7 +382,7 @@ function fireShot() {
   const blocked = world.people.some((p) => p !== tgt && p.car == null && p.fallenAt == null
     && Math.abs(world.personState(p, game.t).x - ts.x) < 0.6 && Math.abs(p.y - tgt.y) < 1);
   if (blocked) {
-    if (!sniper.s.waitingClear) sniperSay('Civilian crossing in front. Waiting for a clean line.');
+    if (!sniper.s.waitingClear) sniperSay('Civilian in my line. Waiting for a clean line.');
     sniper.s.waitingClear = true;
     sniper.s.fireAsap = true;
     return;
@@ -406,8 +407,8 @@ function fireShot() {
   game.phase = 'flight';
   game.flash = 0.55;
   sfx.gunshot();
-  voices.say('Sending.', 'sniper');
-  log('sniper', 'Sending.');
+  voices.say('Shot out.', 'sniper');
+  log('sniper', 'Shot out.');
 }
 
 /** True once the rifle has finished swinging onto the commanded aim point. */
@@ -447,13 +448,13 @@ function resolveImpact() {
 
   if (result.casualty) {
     banner('CIVILIAN DOWN', 'bad', 2200);
-    sniperSay('Civilian down! That was not our guy.');
+    sniperSay('Civilian down. That was not our tango.');
     setTimeout(() => targetSay('Sniper! Get me out of here!'), 900);
     return finish({ ...result, score: 0 }, hit);
   }
   if (killed) {
     banner(result.score >= 100 ? 'HEADSHOT' : 'TARGET DOWN', 'good', 2200);
-    sniperSay(result.score >= 100 ? 'Headshot. Target down.' : 'Hit. Target is down.');
+    sniperSay(result.score >= 100 ? 'Headshot. Tango down.' : 'Hit. Tango down.');
     const score = followUp ? Math.max(followUp.first.score, Math.round(result.score * FOLLOW_UP_FACTOR)) : result.score;
     return finish({ ...result, score, verdict: followUp ? `Follow-up: ${result.verdict}` : result.verdict }, hit);
   }
@@ -467,7 +468,7 @@ function resolveImpact() {
   };
   if (followUp) {
     banner('TARGET ESCAPED', 'bad', 2200);
-    sniperSay(wounded ? "Hit him again, but he's still going. He's gone." : "Missed again. He's gone.");
+    sniperSay(wounded ? 'Hit again, tango still moving. Lost him.' : 'Miss again. Tango is gone.');
     return finish({ ...followUp.first, verdict: `${followUp.first.verdict} (follow-up ${wounded ? 'did not drop him' : 'missed'})` }, hit);
   }
   if (tgt.car == null) {
@@ -480,9 +481,9 @@ function resolveImpact() {
   const dir = tgt.flee ? (tgt.flee.dir > 0 ? ' right' : ' left') : '';
   banner(wounded ? "HE'S HIT - STILL MOVING" : 'MISS - TARGET RUNNING', 'bad', 2200);
   sniperSay(wounded
-    ? `He's hit but still up! Running${dir}, about ${fmt(sp, 0)} meters a second. Give me a follow-up!`
-    : `Miss! He's running${dir}, about ${fmt(sp, 0)} meters a second. Call it!`);
-  setTimeout(() => targetSay(wounded ? "I'm hit! Go, go, go!" : 'Sniper! Move!'), 1200);
+    ? `Hit, tango still up. Running${dir}, ${fmt(sp, 0)} meters a second. Give me a follow-up.`
+    : `Miss. Tango running${dir}, ${fmt(sp, 0)} meters a second. Call it.`);
+  setTimeout(() => targetSay(wounded ? "I'm hit! Get me out of here!" : 'Sniper! Move!'), 1200);
   game.sniper.s.speed = 0; // the old lead no longer applies
   game.phase = 'live';
 }
@@ -681,8 +682,8 @@ function frame(now) {
     if (game.phase === 'live') {
       const fu = game.followUp;
       const left = fu ? fu.deadline - game.t : L.timeLimit - game.t;
-      if (left <= 0) timeUp(fu ? "He's out of sight. Gone." : "Out of time. He's gone.");
-      else if (fu && world.target.flee && !world.isVisible(world.target, game.t)) timeUp("He's out of sight. Gone.");
+      if (left <= 0) timeUp(fu ? 'Lost visual. Tango is gone.' : 'Out of time. Tango is gone.');
+      else if (fu && world.target.flee && !world.isVisible(world.target, game.t)) timeUp('Lost visual. Tango is gone.');
       else if (left <= 10 && Math.ceil(left) !== game.lastBeep) { game.lastBeep = Math.ceil(left); sfx.beep(left <= 3); }
       if (game.phase === 'live' && Math.floor(game.t * 2) !== Math.floor((game.t - dt) * 2)) sniperInsights();
     }
@@ -765,6 +766,7 @@ const voiceInput = new VoiceInput({
 });
 
 // --- UI events ------------------------------------------------------------------------------
+$('radioFx').onchange = (e) => { voices.radio = e.target.checked; };
 $('voiceMode').onchange = (e) => {
   voiceInput.setMode(e.target.value);
   if (e.target.value === 'fish' && !game.services.fishStt) log('system', 'Fish STT needs the server running with FISH_API_KEY set.');
