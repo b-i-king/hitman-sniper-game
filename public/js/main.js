@@ -849,9 +849,12 @@ const voiceInput = new VoiceInput({
   },
   onState: (state, detail) => {
     const btn = $('micBtn');
-    btn.classList.toggle('on', state === 'listening');
-    btn.classList.toggle('rec', state === 'recording');
-    const labels = { listening: voiceInput.ptt ? 'TALK…' : 'LISTENING', recording: 'RECORDING', transcribing: 'TRANSCRIBING…', idle: voiceInput.mode === 'fish' ? 'HOLD TO TALK' : 'MIC OFF', error: 'MIC ERROR', unsupported: 'NO SPEECH API' };
+    // Push-to-talk (browser or Fish) shows as recording: red mic and a REC badge on the view.
+    const recording = state === 'recording' || (state === 'listening' && voiceInput.ptt);
+    btn.classList.toggle('on', state === 'listening' && !recording);
+    btn.classList.toggle('rec', recording);
+    $('recBadge').classList.toggle('hidden', !recording);
+    const labels = { listening: voiceInput.ptt ? '● REC' : 'LISTENING', recording: '● REC', transcribing: 'TRANSCRIBING…', idle: voiceInput.mode === 'fish' ? 'HOLD TO TALK' : 'MIC OFF', error: 'MIC ERROR', unsupported: 'NO SPEECH API' };
     $('micLabel').textContent = labels[state] || state;
     if (detail) { $('transcript').textContent = detail; log('system', detail); }
   },

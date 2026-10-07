@@ -263,8 +263,9 @@ export function colorName(hex) {
   else h = (r - g) / (max - min) + 4;
   h = (h * 60 + 360) % 360;
   if (h < 15 || h >= 340) return l < 0.3 ? 'maroon' : 'red';
-  if (h < 40) return l < 0.4 ? 'brown' : 'orange';
+  if (h < 40) return l < 0.4 ? 'brown' : sat < 0.5 ? 'tan' : 'orange';
   if (h < 65) return l < 0.4 ? 'olive' : 'yellow';
+  if (h < 100 && l < 0.4) return 'olive';
   if (h < 170) return l < 0.3 ? 'dark green' : 'green';
   if (h < 200) return 'teal';
   if (h < 250) return l < 0.3 ? 'navy' : 'blue';
@@ -272,11 +273,36 @@ export function colorName(hex) {
   return 'pink';
 }
 
-/** What the sniper sees through his scope: "black jacket, red tie, sunglasses". */
+// Outfit styles: suit (tie), jacket (zip-up), overalls (bib over a shirt), parka (long puffy
+// coat, often with a scarf). Hat styles: fedora / brim (wide-brim) / cap / beanie.
+const STYLE_NAME = { suit: 'suit', jacket: 'jacket', overalls: 'overalls', parka: 'parka', top: 'top' };
+const HAT_NAME = { fedora: 'hat', brim: 'hat', cap: 'cap', beanie: 'beanie' };
+
+/** The visible pieces of an outfit, each as { key, text }. */
+export function outfitParts(o) {
+  const style = o.style || (o.shirt && o.shirt !== o.coat ? 'suit' : 'top');
+  const main = style === 'overalls' ? o.pants : o.coat;
+  const parts = [{ key: 'body', text: `${colorName(main)} ${STYLE_NAME[style] || 'top'}` }];
+  if (style === 'overalls' && o.shirt) parts.push({ key: 'shirt', text: `${colorName(o.shirt)} shirt` });
+  if (o.tie) parts.push({ key: 'tie', text: `${colorName(o.tie)} tie` });
+  if (o.scarf) parts.push({ key: 'scarf', text: `${colorName(o.scarf)} scarf` });
+  if (o.glasses) parts.push({ key: 'glasses', text: 'sunglasses' });
+  if (o.hat) parts.push({ key: 'hat', text: `${colorName(o.hat)} ${HAT_NAME[o.hatStyle] || 'hat'}` });
+  return parts;
+}
+
+/** What the sniper sees through his scope: "olive jacket, orange cap, sunglasses". */
 export function describeOutfit(o) {
-  const parts = [`${colorName(o.coat)} ${o.shirt && o.shirt !== o.coat ? 'suit' : 'top'}`];
-  if (o.tie) parts.push(`${colorName(o.tie)} tie`);
-  if (o.glasses) parts.push('sunglasses');
-  if (o.hat) parts.push(`${colorName(o.hat)} hat`);
-  return parts.join(', ');
+  return outfitParts(o).map((p) => p.text).join(', ');
+}
+
+/**
+ * The dossier line for a target, built from the same words the sniper uses, with the color of
+ * the identifying item in capitals: "Olive jacket, ORANGE cap, sunglasses."
+ */
+export function dossierLine(o, key) {
+  const text = outfitParts(o)
+    .map((p) => (p.key === key ? p.text.replace(/^(.*) (\S+)$/, (m, color, item) => `${color.toUpperCase()} ${item}`) : p.text))
+    .join(', ');
+  return `${text[0].toUpperCase()}${text.slice(1)}.`;
 }

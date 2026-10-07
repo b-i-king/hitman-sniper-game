@@ -40,6 +40,19 @@ Press **Enter** on the menu to start **Survival**, the main mode. New players ca
 
 You can say the whole call in one breath: *"Target two, range four fifty, wind six from the right, go for the head, send it."*
 
+### Dressed for the setting
+
+People wear what fits the place: hunting jackets and caps in the field, work jackets and
+wide-brim hats on the farm (the farmhands wear overalls), parkas, beanies and scarves at the
+winter market, suits on the rooftop and the train. The dossier names the item that gives the
+target away (cap, hat, scarf or tie) in capitals, using the same words Ghost uses when he
+describes someone. Survival contracts dress their targets, decoys and crowds the same way.
+
+### Push-to-talk
+
+Hold `Space` to talk; a red **● REC** badge appears on the view and the mic button turns red.
+Release to send.
+
 ### The NEXT STEP coach
 
 A panel at the top right tells you what to say next: identify, range, wind, temperature, lead,

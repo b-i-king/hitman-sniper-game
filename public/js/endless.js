@@ -3,7 +3,7 @@
 // all rolled from a seed, so the same seed + round always gives the same contract.
 
 import { LEVELS, civ } from './levels.js';
-import { mulberry32 } from './world.js';
+import { mulberry32, colorName, dossierLine, describeOutfit } from './world.js';
 
 const SUITS = [['black', '#16161a'], ['charcoal', '#3a3d42'], ['navy', '#1c2a4a'], ['white', '#e9e9e4'], ['brown', '#5a3e2b'], ['grey', '#7c7f86']];
 const TIES = [['red', '#d01818'], ['green', '#1f9e3a'], ['yellow', '#e5c51b'], ['purple', '#7b2fbf'], ['orange', '#ef7a12'], ['blue', '#1d4ed8'], ['pink', '#e04f9a']];
@@ -42,22 +42,51 @@ const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 
-function randomTarget(rng) {
-  const suit = pick(rng, SUITS);
-  const tie = pick(rng, TIES);
-  const glasses = rng() < 0.6;
-  const hat = !glasses || rng() < 0.3 ? pick(rng, HATS) : null;
-  const outfit = { coat: suit[1], shirt: suit[0] === 'white' ? '#cfd8dc' : '#f2f2f2', tie: tie[1], pants: suit[1], skin: pick(rng, SKIN), hair: pick(rng, HAIR), glasses, hat: hat ? hat[1] : null };
-  const desc = `${suit[0][0].toUpperCase()}${suit[0].slice(1)} suit, ${tie[0].toUpperCase()} tie${glasses ? ', sunglasses' : ''}${hat ? `, ${hat[0]} hat` : ''}.`;
-  // A bodyguard dressed the same except for the tie.
-  const otherTie = pick(rng, TIES.filter((t) => t !== tie));
-  const decoy = { ...outfit, tie: otherTie[1], skin: pick(rng, SKIN) };
-  return { outfit, desc, decoy, decoyTie: otherTie[0] };
+// Clothing by setting. KEY colors are the identifying item (cap, hat, scarf, tie): each has a
+// distinct color name so the dossier, the decoy and the sniper's description never collide.
+const KEY_COLORS = ['#e8670c', '#c0392b', '#e5c51b', '#1d4ed8', '#efefef', '#151515', '#1f9e3a', '#e04f9a', '#7b2fbf'];
+const THEMES = {
+  hunter: { key: 'hat', bodies: ['#556b2f', '#b8945a', '#5a3e2b', '#9b1c1c', '#3a3d42'], build: (body, key, rng) => ({ style: 'jacket', coat: body, shirt: body, pants: pick(rng, ['#3b4a63', '#a89a6e', '#4a3a2a']), hat: key, hatStyle: 'cap' }) },
+  farm: { key: 'hat', bodies: ['#9b1c1c', '#3d5a80', '#2e6b3a', '#b8945a', '#16161a'], build: (body, key, rng) => ({ style: 'jacket', coat: body, shirt: body, pants: pick(rng, ['#3b4a63', '#4a3a2a']), hat: key, hatStyle: 'brim' }) },
+  winter: { key: 'scarf', bodies: ['#16161a', '#1c2a4a', '#556b2f', '#c0392b', '#e9e9e4', '#7c7f86'], build: (body, key, rng) => ({ style: 'parka', coat: body, pants: '#2c2c34', scarf: key, hat: pick(rng, ['#7c7f86', '#151515', '#efefef']), hatStyle: 'beanie' }) },
+  business: { key: 'tie', bodies: SUITS.map((x) => x[1]), build: (body, key) => ({ style: 'suit', coat: body, shirt: body === '#e9e9e4' ? '#cfd8dc' : '#f2f2f2', pants: body, tie: key }) },
+};
+const THEME_OF = { field: 'hunter', farm: 'farm', market: 'winter', rooftop: 'business', train: 'business' };
+
+/** The target, a look-alike decoy (same clothes, different key item) and the dossier line. */
+function randomTarget(rng, theme) {
+  const T = THEMES[theme];
+  const key = pick(rng, KEY_COLORS);
+  const outfit = { ...T.build(pick(rng, T.bodies), key, rng), skin: pick(rng, SKIN), hair: pick(rng, HAIR), glasses: rng() < 0.6 };
+  const otherKey = pick(rng, KEY_COLORS.filter((c) => colorName(c) !== colorName(key)));
+  const decoy = { ...outfit, [T.key]: otherKey, skin: pick(rng, SKIN), glasses: !outfit.glasses && rng() < 0.5 };
+  const item = { hat: outfit.hatStyle === 'cap' ? 'cap' : 'hat', scarf: 'scarf', tie: 'tie' }[T.key];
+  const other = colorName(otherKey);
+  return { outfit, desc: dossierLine(outfit, T.key), decoy, decoyNote: `the same clothes with ${/^[aeiou]/.test(other) ? 'an' : 'a'} ${other} ${item}` };
 }
 
-function randomCivilian(rng, i) {
+/** A civilian who never looks exactly like the target to the sniper. */
+function civilianNotLike(rng, i, theme, target) {
+  const said = describeOutfit(target);
+  let c = randomCivilian(rng, i, theme);
+  for (let tries = 0; tries < 10 && describeOutfit(c) === said; tries++) c = randomCivilian(rng, i + tries + 1, theme);
+  return c;
+}
+
+function randomCivilian(rng, i, theme) {
+  const skin = pick(rng, SKIN);
+  const hair = pick(rng, HAIR);
   const coat = CIV_COLORS[(i * 5 + Math.floor(rng() * CIV_COLORS.length)) % CIV_COLORS.length];
-  return civ(coat, pick(rng, ['#2c3e50', '#333', '#4a3a2a', '#34495e']), { skin: pick(rng, SKIN), hair: pick(rng, HAIR), hat: rng() < 0.3 ? pick(rng, HATS)[1] : undefined, glasses: rng() < 0.15 });
+  if (theme === 'farm') {
+    return { style: 'overalls', shirt: coat, coat, pants: pick(rng, ['#3d5a80', '#4a3a2a', '#556b2f']), skin, hair, hat: rng() < 0.6 ? pick(rng, HATS)[1] : null, hatStyle: pick(rng, ['brim', 'cap']) };
+  }
+  if (theme === 'hunter') {
+    return { style: 'jacket', coat, shirt: coat, pants: pick(rng, ['#3b4a63', '#a89a6e']), skin, hair, hat: rng() < 0.5 ? pick(rng, KEY_COLORS) : null, hatStyle: 'cap' };
+  }
+  if (theme === 'winter') {
+    return { style: 'parka', coat, pants: '#2c2c34', skin, hair, scarf: rng() < 0.5 ? pick(rng, KEY_COLORS) : null, hat: rng() < 0.6 ? pick(rng, ['#7c7f86', '#151515', '#efefef', '#c0392b']) : null, hatStyle: 'beanie' };
+  }
+  return civ(coat, pick(rng, ['#2c3e50', '#333', '#4a3a2a', '#34495e']), { skin, hair, hat: rng() < 0.3 ? pick(rng, HATS)[1] : undefined, glasses: rng() < 0.15 });
 }
 
 /** Spread n x positions across [-half, half] with at least `gap` meters between them. */
@@ -101,14 +130,15 @@ export function generateLevel(round, seed = 1) {
   if (L.snow) L.ground = '#e8eef2';
   else if (base.id === 'market') L.ground = '#8a8478';
 
-  const t = randomTarget(rng);
+  const theme = THEME_OF[base.id];
+  const t = randomTarget(rng, theme);
   const name = pick(rng, NAMES);
   const moving = rng() < Math.min(0.85, tier * 0.12);
   const nCiv = Math.round(lerp(spec.civ[0], spec.civ[1], clamp01(ramp * 0.7 + rng() * 0.4)));
   const useDecoy = tier >= 3 && nCiv > 0 && rng() < 0.6;
   L.target = {
     name,
-    description: t.desc + (useDecoy ? ` (A bodyguard wears the same suit with a ${t.decoyTie} tie.)` : ''),
+    description: t.desc + (useDecoy ? ` (A bodyguard wears ${t.decoyNote}.)` : ''),
     lines: [pick(rng, LINES), pick(rng, LINES)],
   };
 
@@ -120,7 +150,7 @@ export function generateLevel(round, seed = 1) {
     for (let i = seats.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [seats[i], seats[j]] = [seats[j], seats[i]]; }
     L.people = seats.slice(0, nCiv + 1).map(([car, window], i) => ({
       car, window,
-      outfit: i === 0 ? t.outfit : i === 1 && useDecoy ? t.decoy : randomCivilian(rng, i),
+      outfit: i === 0 ? t.outfit : i === 1 && useDecoy ? t.decoy : civilianNotLike(rng, i, theme, t.outfit),
       isTarget: i === 0,
     }));
     L.intel = `The target is on a moving train circling the valley. Intel: train speed about ${tr.speed} m/s. Call his speed so the sniper leads him, and use "Fire when ready".`;
@@ -130,7 +160,7 @@ export function generateLevel(round, seed = 1) {
     const xs = spread(rng, nCiv + 1, half);
     const y = base.id === 'rooftop' ? L.roofY : 0;
     L.people = xs.map((x, i) => {
-      const p = { x, y, outfit: i === 0 ? t.outfit : i === 1 && useDecoy ? t.decoy : randomCivilian(rng, i), isTarget: i === 0 };
+      const p = { x, y, outfit: i === 0 ? t.outfit : i === 1 && useDecoy ? t.decoy : civilianNotLike(rng, i, theme, t.outfit), isTarget: i === 0 };
       const walks = i === 0 ? moving : rng() < 0.35 + ramp * 0.3;
       if (walks) {
         const span = 3 + rng() * 5;
