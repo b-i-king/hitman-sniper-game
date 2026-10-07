@@ -19,7 +19,8 @@
 //   { type: 'binoculars', up }        "binoculars up" | "lower binoculars"
 //   { type: 'status' }                "status", "read back"
 //   { type: 'hint' }                  "hint"
-//   { type: 'start' } { type: 'next' } { type: 'retry' }  menu navigation
+//   { type: 'start' } { type: 'next' } { type: 'retry' } { type: 'skip' }  menu navigation
+//   { type: 'pause' } { type: 'resume' }
 
 const UNITS = {
   zero: 0, oh: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
@@ -124,6 +125,9 @@ export function parseCommands(text) {
   if (/\bnext (mission|level)\b|\bcontinue\b/.test(s)) cmds.push({ type: 'next' });
   if (/\b(retry|try again|restart|again)\b/.test(s)) cmds.push({ type: 'retry' });
   if (/\b(hint|help me|what should i say)\b/.test(s)) cmds.push({ type: 'hint' });
+  if (/\b(new|different|another) contract\b|\bskip( it| this| contract| this contract)?\b/.test(s)) cmds.push({ type: 'skip' });
+  if (/\b(pause|time out|freeze)( the game)?\b/.test(s)) cmds.push({ type: 'pause' });
+  if (/\b(resume|unpause|un pause|continue the game)\b/.test(s)) cmds.push({ type: 'resume' });
 
   // --- cancel before fire so "hold fire" is not read as "fire" ---------------
   take(/\b(hold fire|cease fire|don'?t (fire|shoot)|do not (fire|shoot)|abort|cancel|stand by|negative)\b/g, () => ({ type: 'cancel' }));
@@ -205,7 +209,7 @@ export function parseCommands(text) {
 
 export const KNOWN_TYPES = new Set([
   'target', 'aim', 'range', 'wind', 'temp', 'speed', 'lead', 'adjust', 'reset', 'fireWhenReady',
-  'fire', 'cancel', 'zoom', 'binoculars', 'status', 'hint', 'start', 'next', 'retry',
+  'fire', 'cancel', 'zoom', 'binoculars', 'status', 'hint', 'start', 'next', 'retry', 'skip', 'pause', 'resume',
 ]);
 
 /** Validate commands coming back from the (untrusted) LLM fallback. */

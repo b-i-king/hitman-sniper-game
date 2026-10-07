@@ -34,3 +34,20 @@ test('binocular commands', () => {
   assert.deepEqual(parseCommands('lower the binoculars'), [{ type: 'binoculars', up: false }]);
   assert.deepEqual(parseCommands('binoculars up'), [{ type: 'binoculars', up: true }]);
 });
+
+test('result and pause commands', () => {
+  assert.deepEqual(parseCommands('new contract'), [{ type: 'skip' }]);
+  assert.deepEqual(parseCommands('pause'), [{ type: 'pause' }]);
+  assert.deepEqual(parseCommands('resume'), [{ type: 'resume' }]);
+});
+
+test("nothing Ghost says is read as an order to shoot", async () => {
+  // Without headphones the mic can hear Ghost; his lines must never parse as "fire".
+  const lines = ['Holding.', 'Chambering. One second.', 'Civilian crossing in front. Waiting for a clean line.',
+    "Copy. I'll take it when it's clear.", 'Sending.', 'In position. Glass up, tell me what you see.',
+    "No shot, I can't see him.", 'Hit. Target is down.', 'Miss! He\'s running left, about 3 meters a second. Call it!'];
+  for (const l of lines) {
+    const types = parseCommands(l).map((c) => c.type);
+    assert.ok(!types.includes('fire') && !types.includes('fireWhenReady'), `${l} -> ${types}`);
+  }
+});

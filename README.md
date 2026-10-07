@@ -70,7 +70,9 @@ Endless contracts, each a random variation of the five Training drills. Each con
 new target (name, suit, tie, glasses, hat), range, wind, gusts, temperature, weather (clear,
 rain, snow, fog, heat haze), crowd size, walking patterns, train speed and time limit. The
 difficulty climbs with every contract. Fail one (score under 70 or a civilian hit) and you
-lose a life. You have 3 lives. Your best score is saved in your browser.
+lose a life, then **retry the same contract** (the default: press Enter or say *"retry"*).
+Say *"new contract"* to roll a different one at the same difficulty instead. You have 3 lives.
+Your best score is saved in your browser.
 
 ### Training: 5 drills (easy → hard)
 
@@ -124,9 +126,11 @@ The debrief compares what you called with the real values and tells you what to 
 You can say it all in one breath: *"Target two, range four fifty, wind six from the right, send it."*
 Numbers work spoken ("six fifty", "one point five", "minus five") or as digits.
 
+| "Retry" / "New contract" | After a failed Survival contract: same contract again (default) or a different one |
+| "Pause" / "Resume" | Freeze the clock |
 | "Binoculars down" / "binoculars up" | Look with the naked eye (Ghost beside you) or through the binoculars |
 
-Keyboard: `M` mic on/off · `B` binoculars · arrows or drag to look · scroll or `Z` zoom · `C` re-center · `F` fire · `H` hint · `T` type a command · `Space` push-to-talk (Fish mode) · `Esc` menu.
+Keyboard: `M` mic on/off · `B` binoculars · arrows or drag to look · scroll or `Z` zoom · `C` re-center · `F` fire · `P` pause · `H` hint · `T` type a command · `Space` push-to-talk (Fish mode) · `Esc` menu.
 
 ## Host it on GitHub Pages
 

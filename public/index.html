@@ -16,6 +16,7 @@
     <div class="stat hidden" id="livesStat"><label>LIVES</label><b id="lives">♥♥♥</b></div>
     <div class="stat"><label>TIME</label><b id="timer">--</b></div>
     <div class="stat"><label>SCORE</label><b id="totalScore">0</b></div>
+    <button class="ghost" id="pauseBtn" title="P">PAUSE</button>
     <button class="ghost" id="howBtnTop">HOW TO PLAY</button>
     <button class="ghost" id="menuBtn" title="Menu (Esc)">MENU</button>
   </header>
@@ -24,6 +25,7 @@
     <section class="stage" id="stage">
       <canvas id="view"></canvas>
       <div class="banner" id="banner"></div>
+      <div class="paused hidden" id="pausedOverlay"><b>PAUSED</b><span>Press P, click RESUME, or say <q>resume</q></span></div>
 
       <!-- Main menu -->
       <div class="modal" id="menuModal">
@@ -54,6 +56,7 @@
               <tr><td>"Send it" / "Fire"</td><td>Take the shot now</td></tr>
               <tr><td>"Fire when ready"</td><td>Sniper fires as soon as the shot is clear</td></tr>
               <tr><td>"Hold fire" · "Status" · "Reset"</td><td>Cancel · Read back solution · Clear corrections</td></tr>
+              <tr><td>"Retry" · "New contract" · "Pause" / "Resume"</td><td>After a failed contract: same contract again (default) or a different one · pause the clock</td></tr>
               <tr><td>"Binoculars down" / "up" · "Zoom in"</td><td>Look with the naked eye (see Ghost beside you) · magnify</td></tr>
             </table>
           </details>
@@ -107,10 +110,10 @@
               <p class="say">70+ passes. The hint (<kbd>H</kbd>) caps the score at 60.</p>
             </div>
             <div><h4>Modes</h4>
-              <p><b>Survival</b> (the main mode): endless contracts with new targets, ranges, weather, crowds and trains. Every contract is harder. Fail one and you lose a life. Three lives. How far can you go?</p>
+              <p><b>Survival</b> (the main mode): endless contracts with new targets, ranges, weather, crowds and trains. Every contract is harder. Fail one and you lose a life, then retry the same contract (or say <q>new contract</q> to roll a different one). Three lives. How far can you go?</p>
               <p><b>Training</b>: five fixed drills, from an open field to a moving night train. Each one teaches a skill.</p>
               <h4>Keys</h4>
-              <p class="say"><kbd>M</kbd> mic · <kbd>B</kbd> binoculars · arrows/drag look · scroll/<kbd>Z</kbd> zoom · <kbd>C</kbd> re-center · <kbd>F</kbd> fire · <kbd>H</kbd> hint · <kbd>T</kbd> type · <kbd>Esc</kbd> menu</p>
+              <p class="say"><kbd>M</kbd> mic · <kbd>B</kbd> binoculars · arrows/drag look · scroll/<kbd>Z</kbd> zoom · <kbd>C</kbd> re-center · <kbd>F</kbd> fire · <kbd>P</kbd> pause · <kbd>H</kbd> hint · <kbd>T</kbd> type · <kbd>Esc</kbd> menu</p>
             </div>
           </div>
           <div class="actions"><button class="primary" id="howClose">GOT IT</button></div>
@@ -151,7 +154,7 @@
           <div class="actions">
             <button id="retryBtn">RETRY</button>
             <button class="primary" id="nextBtn">NEXT MISSION</button>
-            <span class="say">say <q>retry</q> or <q>next mission</q></span>
+            <span class="say" id="resSay"></span>
           </div>
         </div>
       </div>
@@ -201,6 +204,7 @@
     <button class="mic" id="micBtn" title="M: toggle mic / hold SPACE in push-to-talk mode"><span class="dot"></span><span id="micLabel">MIC OFF</span></button>
     <div class="transcript" id="transcript">Click the mic (or press M) and talk to your sniper.</div>
     <form id="typeForm" autocomplete="off"><input id="typeInput" placeholder="…or type a command (e.g. target 1, range 300, send it)" /></form>
+    <button class="ghost" id="zoomBtn" title="Z / scroll">🔍 ZOOM</button>
     <button class="ghost" id="binoBtn" title="B">🔭 BINOCULARS</button>
     <button class="fire" id="fireBtn" title="F">FIRE</button>
   </footer>
