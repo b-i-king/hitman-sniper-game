@@ -1,6 +1,6 @@
 import { LEVELS } from './levels.js';
 import { generateLevel } from './endless.js';
-import { World, scoreShot, PASS_SCORE, HINT_CAP, WOUNDED_ESCAPE_CAP, FOLLOW_UP_FACTOR } from './world.js';
+import { World, describeOutfit, scoreShot, PASS_SCORE, HINT_CAP, WOUNDED_ESCAPE_CAP, FOLLOW_UP_FACTOR } from './world.js';
 import { Sniper } from './sniper.js';
 import { Renderer, drawPortrait } from './render.js';
 import { parseCommands, sanitizeCommands } from './commands.js';
@@ -136,9 +136,36 @@ function renderMenu() {
 
 function startEndless() {
   game.mode = 'endless';
-  game.endless = { seed: Math.floor(Math.random() * 1e9), round: 0, lives: ENDLESS_LIVES, score: 0, log: [] };
+  game.endless = { seed: Math.floor(Math.random() * 1e9), round: 0, variant: 0, lives: ENDLESS_LIVES, score: 0, log: [], passed: false };
   $('totalScore').textContent = 0;
-  openBriefing(generateLevel(0, game.endless.seed), 0);
+  openContract();
+}
+
+/** The current Survival contract. Same round + variant always rebuilds the identical contract. */
+function contractLevel() {
+  const e = game.endless;
+  return generateLevel(e.round, e.seed + e.variant * 7919);
+}
+
+function openContract() {
+  openBriefing(contractLevel(), game.endless.round);
+}
+
+/** Primary result action: retry after a failure, move on after a pass. */
+function retryMission() {
+  if (game.mode === 'endless') {
+    if (game.endless.lives <= 0) return showFinal();
+    return openContract();
+  }
+  openBriefing(game.level, game.levelIndex);
+}
+
+/** Survival only: give up on a failed contract and roll a different one at the same difficulty. */
+function newContract() {
+  const e = game.endless;
+  if (e.lives <= 0) return showFinal();
+  e.variant++;
+  openContract();
 }
 
 function openBriefing(L, index) {
@@ -161,6 +188,7 @@ function openBriefing(L, index) {
   game.lastBeep = null;
   game.insight = {};
   game.phase = 'briefing';
+  setPaused(false);
   $('hintBox').classList.add('hidden');
 
   const endless = game.mode === 'endless';
@@ -203,13 +231,18 @@ function startMission() {
 async function handleUtterance(text, { typed = false } = {}) {
   text = text.trim();
   if (!text) return;
-  // Without headphones the mic hears the sniper; ignore what arrives while he talks.
-  if (!typed && voiceInput.mode === 'browser' && !$('headphones').checked && (voices.speaking || performance.now() < game.speakingUntil)) return;
+  let cmds = parseCommands(text);
+  // Without headphones the mic hears Ghost. While he talks, only urgent orders get through
+  // (fire / hold fire); anything else could be his own readback echoing back.
+  const echo = !typed && voiceInput.mode === 'browser' && !$('headphones').checked && (voices.speaking || performance.now() < game.speakingUntil);
+  if (echo) {
+    cmds = cmds.filter((c) => ['fire', 'fireWhenReady', 'cancel'].includes(c.type));
+    if (!cmds.length) return;
+  }
   log('spotter', text);
   $('transcript').textContent = text;
   $('transcript').classList.remove('interim');
-  let cmds = parseCommands(text);
-  if (!cmds.length && game.services.llm && game.phase === 'live' && text.split(/\s+/).length >= 2) {
+  if (!echo && !cmds.length && game.services.llm && game.phase === 'live' && text.split(/\s+/).length >= 2) {
     try {
       const res = await fetch('/api/sniper', {
         method: 'POST',
@@ -235,23 +268,49 @@ function execute(cmds) {
   let fire = false;
   for (const c of cmds) {
     if (c.type === 'start') { if (game.phase === 'briefing') startMission(); else if (game.phase === 'menu') startEndless(); continue; }
-    if (c.type === 'next') { if (game.phase === 'result') nextMission(); continue; }
-    if (c.type === 'retry') { if (game.phase === 'result' && game.mode === 'campaign') openBriefing(game.level, game.levelIndex); continue; }
+    if (c.type === 'next') { if (game.phase === 'result') (game.mode === 'endless' && !game.endless.passed ? newContract() : nextMission()); continue; }
+    if (c.type === 'retry') { if (game.phase === 'result') retryMission(); continue; }
+    if (c.type === 'skip') { if (game.phase === 'result' && game.mode === 'endless' && !game.endless.passed) newContract(); continue; }
+    if (c.type === 'pause' || c.type === 'resume') { setPaused(c.type === 'pause'); continue; }
     if (c.type === 'hint') { if (game.phase === 'live') showHint(); continue; }
     if (c.type === 'zoom') { setZoom(game.zoom + (c.dir === 'in' ? 1 : -1)); continue; }
     if (c.type === 'binoculars') { game.binoculars = c.up; continue; }
-    if (game.phase !== 'live') continue;
+    if (game.phase !== 'live' || game.paused) continue;
     const r = game.sniper.apply(c, game.t);
     if (r.say) say.push(r.say);
     if (r.fire) fire = true;
   }
+  const spoken = say.length >= 3 && !say.some((x) => /\?|don't/.test(x)) ? compactReadback(cmds) : say.join(' ');
   if (fire) {
-    if (say.length) log('sniper', say.join(' '));
+    if (say.length) log('sniper', spoken);
     fireShot();
   } else if (say.length) {
-    sniperSay(say.join(' '));
+    sniperSay(spoken);
   }
   updateHud(true);
+}
+
+/** One short sentence instead of five, so Ghost is quiet again quickly. */
+function compactReadback(cmds) {
+  const s = game.sniper.s;
+  const has = (t) => cmds.some((c) => c.type === t);
+  const bits = [];
+  if (has('target') && game.sniper.target) bits.push(`number ${s.targetLabel}, ${describeOutfit(game.sniper.target.outfit)}`);
+  if (has('range')) bits.push(`range ${s.range}`);
+  if (has('wind')) bits.push(s.wind ? `wind ${fmt(s.wind)} ${s.windDir}` : 'no wind');
+  if (has('temp')) bits.push(`temp ${s.tempF}`);
+  if (has('speed')) bits.push(s.speed ? `lead ${fmt(s.speed)}` : 'no lead');
+  if (has('aim')) bits.push(s.part === 'head' ? 'head' : 'center mass');
+  if (has('adjust')) bits.push('corrections in');
+  return `Copy. ${bits.join(', ')}.`;
+}
+
+function setPaused(on) {
+  if (!['live', 'flight'].includes(game.phase)) on = false;
+  game.paused = on;
+  $('pauseBtn').textContent = on ? 'RESUME' : 'PAUSE';
+  $('pausedOverlay').classList.toggle('hidden', !on);
+  if (on) { voices.stopAll(); sfx.stopWind(); }
 }
 
 function setZoom(z) {
@@ -311,7 +370,7 @@ function fireShot() {
   if (!tgt) { sniperSay('No target. Give me a number.'); return; }
   if (game.followUp && game.t < game.followUp.readyAt) {
     sniper.s.fireWhenReady = true;
-    sniperSay('Chambering. Firing when ready.');
+    sniperSay('Chambering. One second.');
     return;
   }
   if (!world.isVisible(tgt, game.t)) { sniperSay("No shot, I can't see him."); return; }
@@ -322,7 +381,7 @@ function fireShot() {
   const blocked = world.people.some((p) => p !== tgt && p.car == null && p.fallenAt == null
     && Math.abs(world.personState(p, game.t).x - ts.x) < 0.6 && Math.abs(p.y - tgt.y) < 1);
   if (blocked) {
-    if (!sniper.s.waitingClear) sniperSay("Civilian crossing in front. I'll fire when he's clear.");
+    if (!sniper.s.waitingClear) sniperSay('Civilian crossing in front. Waiting for a clean line.');
     sniper.s.waitingClear = true;
     sniper.s.fireAsap = true;
     return;
@@ -450,7 +509,9 @@ function showResult(result, hit) {
     const e = game.endless;
     e.score += result.score;
     e.log.push({ name: L.name, score: result.score });
+    e.passed = passed;
     if (!passed) e.lives--;
+    saveBest('endless', e.score); // keep the best even if the run is abandoned from the menu
     $('totalScore').textContent = e.score;
     $('lives').textContent = '♥'.repeat(Math.max(0, e.lives)) + '♡'.repeat(ENDLESS_LIVES - Math.max(0, e.lives));
   } else {
@@ -509,14 +570,22 @@ function showResult(result, hit) {
   $('resTable').innerHTML = rows.length ? `<tr><th></th><th>You called</th><th>Actual</th><th></th></tr>${rows.join('')}` : '';
   $('resTip').textContent = tip;
 
+  // Failed: retry is the default (Enter). Passed: move on.
+  const retry = $('retryBtn');
+  const next = $('nextBtn');
+  const over = endless && game.endless.lives <= 0;
+  retry.classList.toggle('hidden', passed || over);
+  retry.classList.toggle('primary', !passed);
+  next.classList.toggle('primary', passed || over);
   if (endless) {
-    const over = game.endless.lives <= 0;
-    $('retryBtn').classList.add('hidden');
-    $('nextBtn').textContent = over ? 'SEE FINAL SCORE' : 'NEXT CONTRACT';
+    retry.textContent = 'RETRY CONTRACT';
+    next.textContent = over ? 'SEE FINAL SCORE' : passed ? 'NEXT CONTRACT' : 'NEW CONTRACT';
+    $('resSay').innerHTML = over ? '' : passed ? 'say <q>next mission</q>' : 'say <q>retry</q> (same contract) or <q>new contract</q>';
   } else {
-    $('retryBtn').classList.remove('hidden');
+    retry.textContent = 'RETRY';
     const last = game.levelIndex >= LEVELS.length - 1;
-    $('nextBtn').textContent = last ? 'FINISH TRAINING' : passed ? 'NEXT DRILL' : 'SKIP TO NEXT';
+    next.textContent = last ? 'FINISH TRAINING' : passed ? 'NEXT DRILL' : 'SKIP TO NEXT';
+    $('resSay').innerHTML = passed ? 'say <q>next mission</q>' : 'say <q>retry</q> or <q>next mission</q>';
   }
   showModal('resultModal');
 }
@@ -525,8 +594,10 @@ function nextMission() {
   if (game.mode === 'endless') {
     const e = game.endless;
     if (e.lives <= 0) return showFinal();
+    if (!e.passed) return newContract();
     e.round++;
-    return openBriefing(generateLevel(e.round, e.seed), e.round);
+    e.variant = 0;
+    return openContract();
   }
   if (game.levelIndex >= LEVELS.length - 1) return showFinal();
   openBriefing(LEVELS[game.levelIndex + 1], game.levelIndex + 1);
@@ -603,7 +674,7 @@ function frame(now) {
   last = now;
   const { world, sniper } = game;
   if (world) {
-    if (['live', 'flight', 'result'].includes(game.phase)) game.t += dt;
+    if (['live', 'flight', 'result'].includes(game.phase) && !game.paused) game.t += dt;
     const L = world.level;
     const D = world.distance;
 
@@ -713,9 +784,11 @@ $('typeForm').addEventListener('submit', (e) => {
 });
 $('fireBtn').onclick = () => { sfx.unlock(); execute([{ type: 'fire' }]); };
 $('binoBtn').onclick = () => { game.binoculars = !game.binoculars; };
+$('zoomBtn').onclick = () => setZoom((game.zoom + 1) % ZOOMS.length);
+$('pauseBtn').onclick = () => setPaused(!game.paused);
 $('hintBtn').onclick = () => game.phase === 'live' && showHint();
 $('startBtn').onclick = startMission;
-$('retryBtn').onclick = () => openBriefing(game.level, game.levelIndex);
+$('retryBtn').onclick = retryMission;
 $('nextBtn').onclick = nextMission;
 $('finalMenuBtn').onclick = renderMenu;
 $('howBtn').onclick = () => { game.howReturn = 'menuModal'; showModal('howModal'); };
@@ -725,7 +798,7 @@ $('howBtnTop').onclick = () => {
   showModal('howModal');
 };
 $('howClose').onclick = () => showModal(game.howReturn || 'menuModal');
-$('menuBtn').onclick = () => { voices.stopAll(); sfx.stopWind(); game.world = null; renderMenu(); };
+$('menuBtn').onclick = () => { setPaused(false); voices.stopAll(); sfx.stopWind(); game.world = null; renderMenu(); };
 
 // Drag to look around through the binoculars, scroll to zoom, double-click to re-center.
 const canvas = $('view');
@@ -753,10 +826,14 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'b' || e.key === 'B') game.binoculars = !game.binoculars;
   if (e.key === 'z' || e.key === 'Z') setZoom((game.zoom + 1) % ZOOMS.length);
   if (e.key === 'c' || e.key === 'C') game.look = { x: 0, y: 0 };
+  if (e.key === 'p' || e.key === 'P') setPaused(!game.paused);
   if (e.key === 'Enter') {
     if (game.phase === 'menu' && !$('menuModal').classList.contains('hidden')) startEndless();
     else if (game.phase === 'briefing') startMission();
-    else if (game.phase === 'result' && !$('resultModal').classList.contains('hidden')) nextMission();
+    else if (game.phase === 'result' && !$('resultModal').classList.contains('hidden')) {
+      const failed = !$('retryBtn').classList.contains('hidden');
+      if (failed) retryMission(); else nextMission();
+    }
   }
   if (e.key === 'Escape') $('menuBtn').click();
   if (e.key === '/' || e.key === 't') { e.preventDefault(); $('typeInput').focus(); }

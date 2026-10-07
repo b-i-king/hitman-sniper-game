@@ -113,7 +113,7 @@ export class Sniper {
         s.fireWhenReady = false;
         s.fireAsap = false;
         s.waitingClear = false;
-        return { say: 'Holding fire.', cancel: true };
+        return { say: 'Holding.', cancel: true }; // never say 'fire': the mic may hear it
       case 'fireWhenReady':
         if (s.targetLabel == null) return { say: 'No target designated. Give me a number.' };
         s.fireWhenReady = true;
