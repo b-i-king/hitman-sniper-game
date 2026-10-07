@@ -4,6 +4,17 @@
 
 let ctx = null;
 let windNode = null;
+let master = null;
+
+/** Everything plays through one master gain so the sound button can mute it all. */
+function out() {
+  const a = ac();
+  if (!master) {
+    master = a.createGain();
+    master.connect(a.destination);
+  }
+  return master;
+}
 
 function ac() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -31,7 +42,7 @@ function burst({ dur = 0.3, freq = 1000, q = 0.7, gain = 0.8, type = 'lowpass', 
   const t = a.currentTime + delay;
   g.gain.setValueAtTime(gain, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  src.connect(f).connect(g).connect(a.destination);
+  src.connect(f).connect(g).connect(out());
   src.start(t);
   src.stop(t + dur + 0.1);
 }
@@ -46,13 +57,14 @@ function tone({ freq = 440, dur = 0.1, gain = 0.2, type = 'sine', delay = 0, sli
   const g = a.createGain();
   g.gain.setValueAtTime(gain, t);
   g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g).connect(a.destination);
+  o.connect(g).connect(out());
   o.start(t);
   o.stop(t + dur + 0.05);
 }
 
 export const sfx = {
   unlock() { ac(); },
+  setMuted(m) { out().gain.value = m ? 0 : 1; },
   gunshot() {
     burst({ dur: 0.08, freq: 6000, gain: 1, type: 'highpass' });
     burst({ dur: 0.6, freq: 900, gain: 0.9 });
@@ -75,7 +87,7 @@ export const sfx = {
     f.Q.value = 0.7;
     const g = a.createGain();
     g.gain.value = level;
-    src.connect(f).connect(g).connect(a.destination);
+    src.connect(f).connect(g).connect(out());
     src.start();
     return { stop: () => { g.gain.setTargetAtTime(0, a.currentTime, 0.03); src.stop(a.currentTime + 0.2); } };
   },
@@ -95,7 +107,7 @@ export const sfx = {
       f.Q.value = 0.6;
       const g = a.createGain();
       g.gain.value = 0;
-      src.connect(f).connect(g).connect(a.destination);
+      src.connect(f).connect(g).connect(out());
       src.start();
       windNode = { g, f };
     }
@@ -238,7 +250,7 @@ export class Voices {
       drive.curve = radioCurve();
       const g = a.createGain();
       g.gain.value = 0.8;
-      src.connect(hp).connect(lp).connect(drive).connect(g).connect(a.destination);
+      src.connect(hp).connect(lp).connect(drive).connect(g).connect(out());
     } catch { /* play it dry */ }
   }
 

@@ -24,7 +24,7 @@ Press **Enter** on the menu to start **Survival**, the main mode. New players ca
 
 ## 🎮 How to play
 
-1. **Turn on your mic.** Click **MIC** (or press `M`) and allow access. Use Chrome or Edge. Headphones help. No mic? Type the same words into the box at the bottom.
+1. **Turn on your mic.** Click **MIC** (or press `M`) for hands-free listening, or **hold `Space` to talk** and release to send (turn on *Push-to-talk only* in the menu settings to keep the mic closed otherwise). Allow access. Use Chrome or Edge. Headphones help. No mic? Type the same words into the box at the bottom.
 2. **Start Survival** (press Enter on the menu) or pick a Training drill. **Read the briefing.** It tells you who the target is (suit, tie, glasses, hat) and what the weather is doing. Say *"start mission"*.
 3. **Look through your binoculars.** Drag the view or use the arrow keys to scan, and scroll to zoom. Every person has a number tag. Press `B` (or say *"binoculars down"*) to lower them and see Ghost lying prone beside you.
 4. **Name the target.** Say *"Target three."* Ghost replies with what he sees through his scope (*"Black suit, blue tie"*). If that isn't your man, pick again.
@@ -33,11 +33,21 @@ Press **Enter** on the menu to start **Survival**, the main mode. New players ca
    - **Wind**: *"Wind eight from the right."* It gusts. Watch the meter and the orange flags. Ghost tells you when it shifts.
    - **Temperature**: *"Temperature fifteen."* Cold air means more drop, hot air means less.
    - **Movement**: *"Moving at one."* Ghost aims ahead of him. Or wait until he stops (Ghost calls it out).
-6. **Go for the head**: *"Go for the head."* A body shot might not kill him.
-7. **Give the order**: *"Send it!"* On the train, say *"Fire when ready"* and Ghost shoots when the window is clear.
-8. **If he survives, follow up.** A miss or a wound sends him running and the civilians scatter. You have about 8 seconds for one more shot: *"Moving at three, send it!"*
+6. **Moving target?** Ghost keeps his crosshair locked on the person you named as he walks (or as the train moves). You only add the lead (*"Moving at one"*) and nudges (*"a little left"*). Nudges stay relative to the target.
+7. **Go for the head**: *"Go for the head."* A body shot might not kill him.
+8. **Give the order**: *"Send it!"* On the train, say *"Fire when ready"* and Ghost shoots when the window is clear.
+9. **If he survives, follow up.** A miss or a wound sends him running and the civilians scatter. You have about 8 seconds for one more shot: *"Moving at three, send it!"*
 
 You can say the whole call in one breath: *"Target two, range four fifty, wind six from the right, go for the head, send it."*
+
+### The NEXT STEP coach
+
+A panel at the top right tells you what to say next: identify, range, wind, temperature, lead,
+then the order. It shows the current readings, warns when the wind has shifted since your
+call, and puts what Ghost sees next to the dossier description after you pick someone, so a
+wrong pick stands out. If Ghost doesn't understand you, it shows phrasings that work. Turn it
+off in the menu settings for a harder game. A **VOICE COMMANDS** cheat sheet sits at the
+bottom of the panel.
 
 ### Radio style
 
@@ -130,6 +140,10 @@ The debrief compares what you called with the real values and tells you what to 
 | "Moving at four" / "stationary" | Target speed in m/s (lead) |
 | "Go for the head" / "center mass" | Aim point |
 | "Up 0.5", "left 1" | Manual corrections in mils |
+| "Move right", "a little higher", "way more left", "bump it up" | Nudges without numbers: 0.5 mil, 0.2 for *a little / a hair*, 1 for *a lot / way* |
+| "Two clicks left", "right 3 clicks" | Turret clicks, 0.1 mil each |
+| "500 yards", "10 Celsius", "moving 9 mph", "14 km/h" | Other units are converted |
+| "Take it", "drop the hammer", "weapons free" · "Wait", "hold on", "belay that" | More ways to say fire and hold |
 | "Send it" / "Fire" / "Take the shot" | Fire now |
 | "Fire when ready" | Sniper fires as soon as the target is clear (best for the train) |
 | "Hold fire", "Status", "Reset", "Zoom in/out" | Cancel, read back the solution, clear corrections, change the view |
@@ -142,7 +156,7 @@ Numbers work spoken ("six fifty", "one point five", "minus five") or as digits.
 | "Pause" / "Resume" | Freeze the clock |
 | "Binoculars down" / "binoculars up" | Look with the naked eye (Ghost beside you) or through the binoculars |
 
-Keyboard: `M` mic on/off · `B` binoculars · arrows or drag to look · scroll or `Z` zoom · `C` re-center · `F` fire · `P` pause · `H` hint · `T` type a command · `Space` push-to-talk (Fish mode) · `Esc` menu.
+Keyboard: `M` mic on/off · hold `Space` talk · `N` sound on/off · `B` binoculars · arrows or drag to look · scroll or `Z` zoom · `C` re-center · `F` fire · `P` pause · `H` hint · `T` type a command · `Space` push-to-talk (Fish mode) · `Esc` menu.
 
 ## Host it on GitHub Pages
 

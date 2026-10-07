@@ -63,11 +63,13 @@
           <div class="settings">
             <label>Voice input
               <select id="voiceMode">
-                <option value="browser">Browser speech (Chrome/Edge, hands-free)</option>
+                <option value="browser">Browser speech (Chrome/Edge): hands-free, or hold SPACE to talk</option>
                 <option value="fish">Fish Audio STT (hold SPACE to talk)</option>
               </select>
             </label>
             <label class="check"><input type="checkbox" id="headphones" /> I'm wearing headphones (keep the mic open while the sniper talks)</label>
+            <label class="check"><input type="checkbox" id="pttOnly" /> Push-to-talk only: the mic listens only while you hold SPACE (no always-on listening)</label>
+            <label class="check"><input type="checkbox" id="coachOn" checked /> Show the NEXT STEP coach (what to say next)</label>
             <label class="check"><input type="checkbox" id="radioFx" checked /> Military radio effect on Ghost's voice (static, squelch, numbers read digit by digit)</label>
             <div class="services" id="services"></div>
           </div>
@@ -80,7 +82,7 @@
           <div class="kicker">FIELD MANUAL</div>
           <h2>How to play</h2>
           <ol class="steps">
-            <li><b>Turn on your mic.</b> Click <b>MIC</b> at the bottom (or press <kbd>M</kbd>) and allow microphone access. Use Chrome or Edge. Headphones help, so the mic doesn't hear Ghost. No mic? Type the same words in the box at the bottom.</li>
+            <li><b>Turn on your mic.</b> Click <b>MIC</b> (or press <kbd>M</kbd>) for hands-free listening, or <b>hold <kbd>Space</kbd></b> to talk and release to send. Allow microphone access. Use Chrome or Edge. Headphones help, so the mic doesn't hear Ghost. No mic? Type the same words in the box at the bottom.</li>
             <li><b>Read the briefing.</b> It tells you who the target is (suit, tie, glasses, hat) and what the weather is doing. Say <q>start mission</q>.</li>
             <li><b>Look through your binoculars.</b> Drag the view or use the arrow keys to scan, and scroll to zoom. Every person has a number tag. Press <kbd>B</kbd> to lower the binoculars and see Ghost lying next to you.</li>
             <li><b>Name the target.</b> <q>Target three</q> or, radio style, <q>Tango three</q>.</li><li><b>Talk like it's a radio net if you like.</b> Numbers digit by digit work: <q>Range four five zero</q>, <q>niner</q> for 9. Ghost answers the same way.</li><li><b>Check Ghost's answer.</b> Ghost tells you what he sees through his scope ("black suit, red tie"). If that's not your man, pick again.</li>
@@ -92,6 +94,7 @@
                 <li><b>Movement</b>: <q>Moving at one.</q> Ghost aims ahead of him. Or wait until he stops.</li>
               </ul>
             </li>
+            <li><b>Moving target?</b> Ghost keeps his crosshair locked on the person you named as he walks (or as the train moves). You only add the lead (<q>Moving at one</q>) and any nudges (<q>a little left</q>, <q>two clicks up</q>). Nudges stay relative to the target.</li>
             <li><b>Aim for the head</b>: <q>Go for the head.</q> A body shot may not kill him.</li>
             <li><b>Give the order</b>: <q>Send it!</q> On the train, say <q>Fire when ready</q> and Ghost shoots the moment the window is clear.</li>
             <li><b>If he survives, follow up.</b> A miss or a wound sends him running and the civilians scatter. You have about 8 seconds: <q>Moving at three, send it!</q></li>
@@ -114,7 +117,7 @@
               <p><b>Survival</b> (the main mode): endless contracts with new targets, ranges, weather, crowds and trains. Every contract is harder. Fail one and you lose a life, then retry the same contract (or say <q>new contract</q> to roll a different one). Three lives. How far can you go?</p>
               <p><b>Training</b>: five fixed drills, from an open field to a moving night train. Each one teaches a skill.</p>
               <h4>Keys</h4>
-              <p class="say"><kbd>M</kbd> mic · <kbd>B</kbd> binoculars · arrows/drag look · scroll/<kbd>Z</kbd> zoom · <kbd>C</kbd> re-center · <kbd>F</kbd> fire · <kbd>P</kbd> pause · <kbd>H</kbd> hint · <kbd>T</kbd> type · <kbd>Esc</kbd> menu</p>
+              <p class="say"><kbd>M</kbd> mic · hold <kbd>Space</kbd> talk · <kbd>N</kbd> sound · <kbd>B</kbd> binoculars · arrows/drag look · scroll/<kbd>Z</kbd> zoom · <kbd>C</kbd> re-center · <kbd>F</kbd> fire · <kbd>P</kbd> pause · <kbd>H</kbd> hint · <kbd>T</kbd> type · <kbd>Esc</kbd> menu</p>
             </div>
           </div>
           <div class="actions"><button class="primary" id="howClose">GOT IT</button></div>
@@ -173,6 +176,13 @@
     </section>
 
     <aside class="panel">
+      <div class="box coach" id="coachBox">
+        <h4>NEXT STEP <span class="tag" id="coachStep"></span></h4>
+        <p class="coach-text" id="coachText">Start a mission, then follow the steps here.</p>
+        <div class="coach-say" id="coachSay"></div>
+        <p class="coach-check hidden" id="coachCheck"></p>
+        <p class="coach-fine" id="coachFine"></p>
+      </div>
       <div class="box dossier">
         <h4>TARGET DOSSIER</h4>
         <div class="dossier-row">
@@ -198,6 +208,22 @@
         <h4>COMMS</h4>
         <div class="log" id="log"></div>
       </div>
+      <details class="box cheats" id="cheats">
+        <summary>VOICE COMMANDS</summary>
+        <table class="cmds">
+          <tr><td>Pick</td><td>"Target 3" · "Tango 3" · "Number 3"</td></tr>
+          <tr><td>Range</td><td>"Range 450" · "Four five zero" · "500 yards"</td></tr>
+          <tr><td>Wind</td><td>"Wind 8 from the right" · "Wind 8 right to left" · "No wind"</td></tr>
+          <tr><td>Temp</td><td>"Temperature 15" · "10 Celsius"</td></tr>
+          <tr><td>Lead</td><td>"Moving at 1" · "Moving 9 mph" · "Stationary"</td></tr>
+          <tr><td>Aim</td><td>"Go for the head" · "Center mass"</td></tr>
+          <tr><td>Nudge</td><td>"Move right" · "A little higher" · "Two clicks left" · "Up 1" · "Way more left"</td></tr>
+          <tr><td>Shoot</td><td>"Send it" · "Fire" · "Take it" · "Drop him" · "Fire when ready"</td></tr>
+          <tr><td>Stop</td><td>"Hold fire" · "Wait" · "Hold on" · "Abort"</td></tr>
+          <tr><td>Other</td><td>"Status" · "Reset" · "Binoculars down" · "Zoom in" · "Pause"</td></tr>
+        </table>
+        <p class="say">Nudges move the shot: "move right" = 0.5 mil, "a little" = 0.2, "a lot" = 1, one click = 0.1.</p>
+      </details>
     </aside>
   </main>
 
@@ -205,6 +231,7 @@
     <button class="mic" id="micBtn" title="M: toggle mic / hold SPACE in push-to-talk mode"><span class="dot"></span><span id="micLabel">MIC OFF</span></button>
     <div class="transcript" id="transcript">Click the mic (or press M) and talk to your sniper.</div>
     <form id="typeForm" autocomplete="off"><input id="typeInput" placeholder="…or type a command (e.g. target 1, range 300, send it)" /></form>
+    <button class="ghost" id="soundBtn" title="N" aria-pressed="false">🔊 SOUND</button>
     <button class="ghost" id="zoomBtn" title="Z / scroll">🔍 ZOOM</button>
     <button class="ghost" id="binoBtn" title="B">🔭 BINOCULARS</button>
     <button class="fire" id="fireBtn" title="F">FIRE</button>

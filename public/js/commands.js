@@ -36,7 +36,7 @@ const B = '(?<![\\w.-])'; // left boundary that also works before a minus sign
 
 /** Lowercase, strip punctuation, and convert spelled-out numbers to digits. */
 export function normalize(text) {
-  let s = ` ${String(text).toLowerCase()} `
+  let s = ` ${String(text).toLowerCase().replace(/['’`]/g, '')} `
     .replace(/(\d),(\d{3})/g, '$1$2') // 1,000 -> 1000
     .replace(/(\d)(mils?|mph|m\/s|km\/h|m)\b/g, '$1 $2')
     .replace(/°\s*f?/g, ' degrees ')
@@ -137,10 +137,10 @@ export function parseCommands(text) {
   if (/\b(resume|unpause|un pause|continue the game)\b/.test(s)) cmds.push({ type: 'resume' });
 
   // --- cancel before fire so "hold fire" is not read as "fire" ---------------
-  take(/\b(hold fire|cease fire|don'?t (fire|shoot)|do not (fire|shoot)|abort|cancel|stand by|negative)\b/g, () => ({ type: 'cancel' }));
+  take(/\b(hold fire|cease fire|check fire|hold it|hold on|hold up|belay( that)?|don'?t (fire|shoot)|do not (fire|shoot)|abort|cancel|stand by|negative|wait( up| one)?|not yet)\b/g, () => ({ type: 'cancel' }));
 
   // --- fire when ready (before plain fire) ------------------------------------
-  take(/\b(fire|shoot|send it|take (the|your) shot|engage|take him out)?\s*(when|once|if) (you'?re |you are )?(ready|you have (it|the shot|a shot)|you got (it|the shot)|clear|he'?s clear|it'?s clear)\b|\b(fire|shoot|engage) at will\b|\bcleared hot\b/g,
+  take(/\b(fire|shoot|send it|take it|take (the|your) shot|engage|take him out)?\s*(when|once|if) (you'?re |you are )?(ready|you have (it|the shot|a shot)|you got (it|the shot)|clear|he'?s clear|it'?s clear)\b|\b(fire|shoot|engage) at will\b|\bcleared hot\b/g,
     () => ({ type: 'fireWhenReady' }));
 
   // --- environment calls ------------------------------------------------------
@@ -152,40 +152,63 @@ export function parseCommands(text) {
   take(new RegExp(`\\bwinds?\\s+(?:is\\s+)?${WDIR}\\s+(?:at\\s+)?${NUMTOK}${WUNIT}`, 'g'),
     (m, dir, a) => ({ type: 'wind', value: Math.abs(num(a)), dir }));
 
-  take(new RegExp(`\\b(?:range|distance|ranged at|range is)\\s+(?:is\\s+|of\\s+|at\\s+)?${NUMTOK}(?:\\s+(\\d{2}))?(?:\\s+(?:meters?|metres?|m))?\\b`, 'g'),
-    (m, a, b) => {
+  const YARD = 0.9144;
+  take(new RegExp(`\\b(?:range|distance|ranged at|range is)\\s+(?:is\\s+|of\\s+|at\\s+)?${NUMTOK}(?:\\s+(\\d{2}))?(?:\\s+(meters?|metres?|m|yards?|yds?))?\\b`, 'g'),
+    (m, a, b, unit) => {
       let v = num(a);
       if (b && v < 10) v = v * 100 + parseInt(b, 10); // "range six fifty" -> 650
       else if (v != null && v < 20) v *= 100; // "range 6" (hundred) -> 600
+      if (v != null && unit && /^y/.test(unit)) v = Math.round((v * YARD) / 10) * 10; // hunters call yards
       return v != null ? { type: 'range', value: v } : null;
     });
+  take(new RegExp(`${B}${NUM}\\s+(?:yards?|yds?)\\b`, 'g'), (m, a) => {
+    const v = num(a);
+    return v >= 50 ? { type: 'range', value: Math.round((v * YARD) / 10) * 10 } : null;
+  });
   take(new RegExp(`${B}${NUM}\\s+(?:meters|metres|meter|metre)\\b(?!\\s+per)`, 'g'), (m, a) => {
     const v = num(a);
     return v >= 50 ? { type: 'range', value: v } : null;
   });
 
-  take(new RegExp(`\\b(?:temperature|temp|temps)\\s+(?:is\\s+|of\\s+|at\\s+)?${NUM}(?:\\s+degrees?)?(?:\\s+(?:fahrenheit|f))?\\b`, 'g'), (m, a) => ({ type: 'temp', value: num(a) }));
-  take(new RegExp(`${B}${NUM}\\s+degrees?\\b(?:\\s+(?:fahrenheit|f))?`, 'g'), (m, a) => ({ type: 'temp', value: num(a) }));
+  const toF = (v, unit) => (unit && /^c/.test(unit) ? Math.round((v * 9) / 5 + 32) : v);
+  take(new RegExp(`\\b(?:temperature|temp|temps)\\s+(?:is\\s+|of\\s+|at\\s+)?${NUM}(?:\\s+degrees?)?(?:\\s+(fahrenheit|f|celsius|centigrade|c))?\\b(?!\\s*(?:meters|metres|mph|clicks?|mils?|yards?))`, 'g'), (m, a, u) => ({ type: 'temp', value: toF(num(a), u) }));
+  take(new RegExp(`${B}${NUM}\\s+(?:degrees?\\b(?:\\s+(fahrenheit|f|celsius|centigrade|c)\\b)?|(celsius|centigrade)\\b)`, 'g'), (m, a, u, u2) => ({ type: 'temp', value: toF(num(a), u || u2) }));
 
-  take(new RegExp(`\\b(?:moving|speed|traveling|travelling|going|walking|running)\\b(?:\\s+(?:left|right|to the left|to the right|at|about|around|is|of))*\\s+${NUMTOK}(?:\\s+(?:meters? per second|metres? per second|m\\/s|mps))?`, 'g'),
-    (m, a) => ({ type: 'speed', value: num(a) }));
-  take(new RegExp(`${B}${NUM}\\s+(?:meters? per second|metres? per second|m\\/s|mps)\\b`, 'g'), (m, a) => ({ type: 'speed', value: num(a) }));
-  take(/\b(?:stationary|not moving|stopped|standing still|he'?s still)\b/g, () => ({ type: 'speed', value: 0 }));
+  // Target speed is in m/s; convert mph and km/h if the spotter uses them.
+  const SPEED_UNIT = '(?:\\s+(meters? per second|metres? per second|m s|m\\/s|mps|mph|miles? (?:per|an) hour|km h|km\\/h|kph|kmh|kilometers? (?:per|an) hour|kilometres? (?:per|an) hour))?';
+  const toMps = (v, unit) => (!unit ? v : /^(mph|mile)/.test(unit) ? Math.round(v * 0.447 * 10) / 10 : /^(km|kph|kilo)/.test(unit) ? Math.round((v / 3.6) * 10) / 10 : v);
+  take(new RegExp(`\\b(?:moving|speed|traveling|travelling|going|walking|running|doing)\\b(?:\\s+(?:left|right|to the left|to the right|at|about|around|is|of))*\\s+${NUMTOK}${SPEED_UNIT}`, 'g'),
+    (m, a, u) => ({ type: 'speed', value: toMps(num(a), u) }));
+  take(new RegExp(`${B}${NUM}\\s+(meters? per second|metres? per second|m s|m\\/s|mps|km h|km\\/h|kph|kmh)\\b`, 'g'), (m, a, u) => ({ type: 'speed', value: toMps(num(a), u) }));
+  take(/\b(?:stationary|not moving|stopped|standing still|he'?s still|hes stopped|static)\b/g, () => ({ type: 'speed', value: 0 }));
 
   take(new RegExp(`\\blead(?:\\s+(?:him|her|it|by|of|left|right))*\\s+${NUMTOK}(?:\\s+mils?)?`, 'g'), (m, a) => ({ type: 'lead', value: num(a) }));
 
   // --- target designation -----------------------------------------------------
-  take(new RegExp(`\\b(?:target|targets|number|person|contact|subject|tango|guy|man|woman|passenger|individual|hostile)\\s+(?:is\\s+)?(?:number\\s+)?${NUMTOK}\\b`, 'g'),
+  take(new RegExp(`\\b(?:target|targets|number|no|person|contact|subject|tango|guy|man|woman|lady|dude|passenger|individual|hostile|mark|hvt|package|bad guy|x ray|xray|bandit)\\s+(?:is\\s+)?(?:number\\s+|no\\s+)?${NUMTOK}\\b`, 'g'),
     (m, a) => {
       const v = num(a);
       return v != null && v >= 0 && v < 100 ? { type: 'target', id: Math.round(v) } : null;
     });
 
   // --- aim point ----------------------------------------------------------------
-  take(/\b(head ?shot|headshot|the head|his head|her head|aim (for )?(the )?head|go for head|head)\b/g, () => ({ type: 'aim', part: 'head' }));
-  take(/\b(center mass|centre mass|centre of mass|center of mass|chest|body shot|the body|torso|heart)\b/g, () => ({ type: 'aim', part: 'chest' }));
+  take(/\b(head ?shot|headshot|the head|his head|her head|aim (for )?(the )?head|go for head|head|face|his face|dome|noggin|melon|skull|brain|between the eyes)\b/g, () => ({ type: 'aim', part: 'head' }));
+  take(/\b(center mass|centre mass|centre of mass|center of mass|com|chest|body shot|the body|body|torso|heart|vitals|boiler room|ticker|upper body)\b/g, () => ({ type: 'aim', part: 'chest' }));
 
-  // --- holds / corrections --------------------------------------------------------
+  // --- binoculars ------------------------------------------------------------------
+  take(/\b(?:(?:lower|drop|put down|take down)(?: the| my)? (?:binoculars?|binos?|glass)|(?:binoculars?|binos?|glass) down|naked eye)\b/g, () => ({ type: 'binoculars', up: false }));
+  take(/\b(?:(?:raise|lift|pick up|grab)(?: the| my)? (?:binoculars?|binos?|glass)|(?:binoculars?|binos?|glass) up)\b/g, () => ({ type: 'binoculars', up: true }));
+
+  // --- holds / corrections ----
+  // Turret clicks are 0.1 mil: "two clicks left", "left three clicks".
+  const DIRS = '(up|down|left|right|high|low|higher|lower)';
+  const dirAdjust = (dir, v) => {
+    const axis = /^(up|down|high|low|higher|lower)$/.test(dir) ? 'v' : 'h';
+    const sign = /^(down|left|low|lower)$/.test(dir) ? -1 : 1;
+    return { type: 'adjust', axis, value: Math.round(sign * Math.abs(v) * 100) / 100 };
+  };
+  take(new RegExp(`${B}${NUMTOK}\\s+clicks?\\s+(?:to the\\s+)?${DIRS}\\b`, 'g'), (m, a, d) => dirAdjust(d, num(a) * 0.1));
+  take(new RegExp(`\\b${DIRS}\\s+${NUMTOK}\\s+clicks?\\b`, 'g'), (m, d, a) => dirAdjust(d, num(a) * 0.1));
   take(/\b(reset|clear) (the )?(holds?|adjustments?|corrections?|solution|everything)\b|\breset\b/g, () => ({ type: 'reset' }));
   take(new RegExp(`\\b(?:come |hold |adjust |go |move |dial |aim )?(up|down|left|right|high|low)\\s+(?:by\\s+)?${NUMTOK}(?:\\s+mils?)?`, 'g'), (m, dir, a) => {
     const v = num(a);
@@ -195,16 +218,23 @@ export function parseCommands(text) {
     return { type: 'adjust', axis, value: sign * Math.abs(v) };
   });
 
-  // --- binoculars ------------------------------------------------------------------
-  take(/\b(?:(?:lower|drop|put down|take down)(?: the| my)? (?:binoculars?|binos?|glass)|(?:binoculars?|binos?|glass) down|naked eye)\b/g, () => ({ type: 'binoculars', up: false }));
-  take(/\b(?:(?:raise|lift|pick up|grab)(?: the| my)? (?:binoculars?|binos?|glass)|(?:binoculars?|binos?|glass) up)\b/g, () => ({ type: 'binoculars', up: true }));
+  // No number: "move right", "a little higher", "bump it up", "a hair left", "way more left".
+  // A little = 0.2 mil, plain = 0.5 mil, a lot = 1 mil.
+  const SMALL = 'a little|a little bit|a bit|a hair|a tad|a touch|slightly|a smidge|just a bit|a skosh|a click';
+  const BIG = 'a lot|a lot more|way|way more|much|lots|a whole lot|a full mil';
+  const VERB = 'move|come|go|shift|nudge|bump|aim|hold|adjust|dial|walk|bring|put it|correct|favor|favour|get';
+  const amount = (deg) => (!deg ? 0.5 : new RegExp(`^(?:${BIG})$`).test(deg.trim()) ? 1 : new RegExp(`^(?:${SMALL})$`).test(deg.trim()) ? 0.2 : 0.5);
+  take(new RegExp(`\\b(?:${VERB})(?:\\s+(?:it|the aim|your aim|the crosshair|your crosshairs?|him))?(?:\\s+(${SMALL}|${BIG}))?(?:\\s+(?:more|to the|further))?\\s+${DIRS}(?:\\s+(${SMALL}|${BIG}))?\\b`, 'g'),
+    (m, deg, d, deg2) => dirAdjust(d, amount(deg || deg2)));
+  take(new RegExp(`\\b(${BIG}|${SMALL})(?:\\s+(?:more|to the|further))?\\s+${DIRS}\\b`, 'g'), (m, deg, d) => dirAdjust(d, amount(deg)));
+  take(new RegExp(`\\bmore\\s+${DIRS}\\b`, 'g'), (m, d) => dirAdjust(d, 0.5));
 
   // --- optics / status ------------------------------------------------------------
   take(/\bzoom (in|out)\b/g, (m, d) => ({ type: 'zoom', dir: d }));
   take(/\b(status|read ?back|say again|what'?s your (solution|status)|repeat( that)?)\b/g, () => ({ type: 'status' }));
 
   // --- fire -----------------------------------------------------------------------
-  if (/\b(fire|fired|firing|shoot|send it|sent it|take (the|your|him|her) (shot|out)|take him out|take her out|execute|green ?light|engage|drop him|drop her|pull the trigger|light him up|smoke him|now now|go go)\b/.test(s)
+  if (/\b(fire|fired|firing|shoot|send it|sent it|take (the|your|him|her) (shot|out)|take him out|take her out|take it|take him|execute|green ?light|engage|drop him|drop her|drop the hammer|pull the trigger|squeeze|break the shot|send the round|light him up|smoke him|hit him|smoke check|weapons free|cleared to engage|cleared hot|your shot|on you|punch it|let it fly|let it rip|bang|now now|go go)\b/.test(s)
     || /^\s*(now|go)\s*$/.test(s)) {
     cmds.push({ type: 'fire' });
   }

@@ -103,7 +103,17 @@ export class VoiceInput {
   }
 
   // --- Fish Audio push-to-talk --------------------------------------------------------
+  /**
+   * Push-to-talk. Browser mode: listen only while the key/button is held (does nothing if the
+   * mic is already always on). Fish mode: record a clip and transcribe it on release.
+   */
   async pttDown() {
+    if (this.mode === 'browser') {
+      if (this.enabled) return;
+      this.ptt = true;
+      this.start();
+      return;
+    }
     if (this.mode !== 'fish' || this.recorder) return;
     try {
       this.stream = this.stream || (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }));
@@ -136,6 +146,15 @@ export class VoiceInput {
   }
 
   pttUp() {
+    if (this.mode === 'browser') {
+      if (!this.ptt) return;
+      this.ptt = false;
+      this.enabled = false;
+      const rec = this.rec;
+      this.rec = null;
+      try { rec?.stop(); } catch { /* ignore */ } // stop(), not abort(): deliver what was said
+      return;
+    }
     if (this.recorder && this.recorder.state === 'recording') this.recorder.stop();
   }
 }
