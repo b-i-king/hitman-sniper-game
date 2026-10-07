@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Spotter: One Shot</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ccircle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22none%22 stroke=%22%238cff7a%22 stroke-width=%228%22/%3E%3Cpath d=%22M50 0v100M0 50h100%22 stroke=%22%238cff7a%22 stroke-width=%226%22/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Oswald:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">SPOTTER<span>// ONE SHOT</span></div>
+    <div class="mission" id="missionName">—</div>
+    <div class="stat"><label>TIME</label><b id="timer">--</b></div>
+    <div class="stat"><label>SCORE</label><b id="totalScore">0</b></div>
+    <button class="ghost" id="menuBtn" title="Menu (Esc)">MENU</button>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage">
+      <canvas id="view"></canvas>
+      <div class="banner" id="banner"></div>
+
+      <!-- Main menu -->
+      <div class="modal" id="menuModal">
+        <div class="card wide">
+          <h1>SPOTTER <small>// ONE SHOT</small></h1>
+          <p class="lede">A voice-controlled sniper game. <b>You are the spotter.</b> An AI sniper is on the rifle beside you and does exactly what you say. Find the target, read the conditions, call the shot.</p>
+          <div class="roles">
+            <div><span class="ico">🎧</span><b>You · Spotter</b><p>Identify the target, read range, wind and temperature, and talk the sniper onto the shot.</p></div>
+            <div><span class="ico">🎯</span><b>AI · Sniper</b><p>Dials the solution you call, tracks the target, reads back, and fires on your order.</p></div>
+            <div><span class="ico">🕴️</span><b>The Target</b><p>Viktor "The Viper" Kovac. Don't let him escape. Don't hit civilians.</p></div>
+          </div>
+          <h3>Missions</h3>
+          <div class="levels" id="levelList"></div>
+          <details>
+            <summary>What can I say?</summary>
+            <table class="cmds">
+              <tr><td>"Target three"</td><td>Pick the person with that number tag</td></tr>
+              <tr><td>"Range six hundred"</td><td>Distance in meters (gravity drop)</td></tr>
+              <tr><td>"Wind eight from the right"</td><td>Crosswind in mph and where it comes from</td></tr>
+              <tr><td>"Temperature fifteen"</td><td>°F: cold air = more drop, hot air = less</td></tr>
+              <tr><td>"Moving at four"</td><td>Target speed (m/s): sniper leads him</td></tr>
+              <tr><td>"Go for the head" / "Center mass"</td><td>Aim point</td></tr>
+              <tr><td>"Up 0.5" / "Left 1"</td><td>Manual corrections in mils</td></tr>
+              <tr><td>"Send it" / "Fire"</td><td>Take the shot now</td></tr>
+              <tr><td>"Fire when ready"</td><td>Sniper fires as soon as the shot is clear</td></tr>
+              <tr><td>"Hold fire" · "Status" · "Reset"</td><td>Cancel · Read back solution · Clear corrections</td></tr>
+            </table>
+          </details>
+          <div class="settings">
+            <label>Voice input
+              <select id="voiceMode">
+                <option value="browser">Browser speech (Chrome/Edge, hands-free)</option>
+                <option value="fish">Fish Audio STT (hold SPACE to talk)</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="headphones" /> I'm wearing headphones (keep the mic open while the sniper talks)</label>
+            <div class="services" id="services"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Briefing -->
+      <div class="modal hidden" id="briefModal">
+        <div class="card">
+          <div class="kicker" id="briefCodename"></div>
+          <h2 id="briefName"></h2>
+          <div class="pill" id="briefDiff"></div>
+          <div class="brief-grid">
+            <canvas id="portrait" width="120" height="150"></canvas>
+            <div>
+              <b id="briefTarget"></b>
+              <p id="briefDesc"></p>
+              <p class="intel" id="briefIntel"></p>
+            </div>
+          </div>
+          <ol class="tutorial" id="briefTutorial"></ol>
+          <div class="actions">
+            <button class="primary" id="startBtn">START MISSION</button>
+            <span class="say">or say <q>start mission</q></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div class="modal hidden" id="resultModal">
+        <div class="card">
+          <div class="kicker" id="resKicker">MISSION DEBRIEF</div>
+          <div class="score-big" id="resScore">0</div>
+          <h2 id="resVerdict"></h2>
+          <table class="debrief" id="resTable"></table>
+          <p class="tip" id="resTip"></p>
+          <div class="actions">
+            <button id="retryBtn">RETRY</button>
+            <button class="primary" id="nextBtn">NEXT MISSION</button>
+            <span class="say">say <q>retry</q> or <q>next mission</q></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Campaign complete -->
+      <div class="modal hidden" id="finalModal">
+        <div class="card">
+          <div class="kicker">CAMPAIGN COMPLETE</div>
+          <div class="score-big" id="finalScore">0</div>
+          <h2 id="finalRank"></h2>
+          <table class="debrief" id="finalTable"></table>
+          <div class="actions"><button class="primary" id="finalMenuBtn">BACK TO MENU</button></div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="box dossier">
+        <h4>TARGET DOSSIER</h4>
+        <div class="dossier-row">
+          <canvas id="portraitSmall" width="64" height="80"></canvas>
+          <div><b id="dName">—</b><p id="dDesc"></p></div>
+        </div>
+      </div>
+      <div class="box">
+        <h4>SPOTTER DATA</h4>
+        <div class="readout"><label>RANGE</label><b id="dRange">—</b></div>
+        <div class="readout"><label>WIND</label><b id="dWind">—</b></div>
+        <div class="readout"><label>TEMP</label><b id="dTemp">—</b></div>
+        <p class="intel small" id="dIntel"></p>
+      </div>
+      <div class="box">
+        <h4>SNIPER SOLUTION <span class="tag" id="sReady"></span></h4>
+        <div class="sol" id="solution"></div>
+        <div class="hint hidden" id="hintBox"></div>
+        <button class="ghost small" id="hintBtn" title="H">Show hint (max 60 pts)</button>
+      </div>
+      <div class="box comms">
+        <h4>COMMS</h4>
+        <div class="log" id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="talkbar">
+    <button class="mic" id="micBtn" title="M: toggle mic / hold SPACE in push-to-talk mode"><span class="dot"></span><span id="micLabel">MIC OFF</span></button>
+    <div class="transcript" id="transcript">Click the mic (or press M) and talk to your sniper.</div>
+    <form id="typeForm" autocomplete="off"><input id="typeInput" placeholder="…or type a command (e.g. target 1, range 300, send it)" /></form>
+    <button class="fire" id="fireBtn" title="F">FIRE</button>
+  </footer>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

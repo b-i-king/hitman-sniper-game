@@ -1,0 +1,14 @@
+{
+  "name": "spotter-one-shot",
+  "version": "1.0.0",
+  "description": "Voice-controlled sniper game: you are the spotter, an AI sniper takes your call. Built for the Fish Audio hackathon.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}
