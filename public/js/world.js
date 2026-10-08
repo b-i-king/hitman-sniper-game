@@ -306,3 +306,66 @@ export function dossierLine(o, key) {
     .join(', ');
   return `${text[0].toUpperCase()}${text.slice(1)}.`;
 }
+
+// --- picking someone by description --------------------------------------------------------
+// "the guy in the orange cap", "man with the red scarf", "the one on the far left".
+
+const COLOR_WORDS = {
+  black: ['black', 'dark'], white: ['white'], grey: ['grey', 'gray', 'silver'], 'dark grey': ['dark grey', 'dark gray', 'charcoal', 'grey', 'gray'],
+  red: ['red'], maroon: ['maroon', 'dark red', 'burgundy', 'red'], orange: ['orange', 'blaze orange', 'hunter orange'],
+  tan: ['tan', 'beige', 'khaki', 'brown'], brown: ['brown'], yellow: ['yellow', 'gold'], olive: ['olive', 'army green', 'green', 'khaki'],
+  green: ['green'], 'dark green': ['dark green', 'green'], teal: ['teal', 'turquoise'], blue: ['blue', 'light blue'],
+  navy: ['navy', 'dark blue', 'navy blue', 'blue'], purple: ['purple', 'violet'], pink: ['pink'],
+};
+const ITEM_WORDS = {
+  cap: ['cap', 'ball cap', 'baseball cap', 'hat'], hat: ['hat', 'cowboy hat', 'brim'], beanie: ['beanie', 'toque', 'hat', 'wool hat'],
+  scarf: ['scarf'], tie: ['tie', 'necktie'], suit: ['suit'], jacket: ['jacket', 'coat', 'shirt', 'top'], parka: ['parka', 'coat', 'jacket'],
+  overalls: ['overalls', 'dungarees'], shirt: ['shirt'], top: ['top', 'shirt', 'sweater', 'jacket'],
+};
+const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Find the person a spotter described. Returns { person } for a unique match,
+ * { ambiguous: [labels] } when several fit, or null when the text describes nobody.
+ */
+export function findByDescription(text, people, isVisible = () => true, xOf = (p) => p.x || 0) {
+  const s = ` ${String(text).toLowerCase().replace(/['’]/g, '').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ')} `;
+  const candidates = people.filter((p) => p.fallenAt == null && isVisible(p));
+  if (!candidates.length) return null;
+
+  // Position in the crowd: far left / leftmost / on the right / in the middle.
+  const pos = s.match(/\b(?:(?:guy|man|woman|lady|dude|one|person|target|tango|fella|bloke) (?:on|at|to) the (far )?(left|right)|(far left|far right|leftmost|rightmost|furthest left|furthest right)|(?:in the|the) (middle|center|centre)(?: one| guy| man)?)\b/);
+  const scores = candidates.map((p) => {
+    let score = 0;
+    for (const part of outfitParts(p.outfit)) {
+      const m = part.text.match(/^(.*) (\S+)$/);
+      if (!m) {
+        if (part.key === 'glasses' && /\b(sunglasses|shades|glasses|sunnies)\b/.test(s)) score += 1;
+        continue;
+      }
+      const [, color, item] = m;
+      const colors = COLOR_WORDS[color] || [color];
+      const items = ITEM_WORDS[item] || [item];
+      const colorRe = colors.map(esc).join('|');
+      const itemRe = items.map(esc).join('|');
+      // "orange cap", "orange baseball cap", "cap is orange", "in orange"
+      if (new RegExp(`\\b(?:${colorRe})(?: \\w+){0,2} (?:${itemRe})\\b`).test(s)) score += part.key === 'body' ? 2 : 3;
+      else if (new RegExp(`\\b(?:${itemRe}) (?:is |thats |that s )?(?:${colorRe})\\b`).test(s)) score += 2;
+    }
+    return { p, score };
+  });
+  let pool = scores;
+  const best = Math.max(...scores.map((x) => x.score));
+  if (best > 0) pool = scores.filter((x) => x.score === best);
+  else if (!pos) return null;
+
+  if (pos) {
+    const sorted = [...pool].sort((a, b) => xOf(a.p) - xOf(b.p));
+    const side = pos[2] || (pos[3] && /left/.test(pos[3]) ? 'left' : pos[3] ? 'right' : null);
+    if (side === 'left') pool = [sorted[0]];
+    else if (side === 'right') pool = [sorted[sorted.length - 1]];
+    else if (pos[4]) pool = sorted.length % 2 ? [sorted[(sorted.length - 1) / 2]] : sorted.slice(sorted.length / 2 - 1, sorted.length / 2 + 1);
+  }
+  if (pool.length === 1) return { person: pool[0].p };
+  return { ambiguous: pool.map((x) => x.p.label) };
+}
