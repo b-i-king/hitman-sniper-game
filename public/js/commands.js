@@ -114,6 +114,9 @@ function num(token) {
 }
 
 const NUMTOK = `(${NUM.slice(1, -1)}|won|to|too|for|fore|ate|free|tree)`;
+// Digits only: where "to" would be misheard as 2 ("left to right" is not "left 2").
+const NUMSTRICT = `(${NUM.slice(1, -1)})`;
+const FILLER = '(?:about|around|like|maybe|roughly|approximately|probably|say|uh|um|is|at|of|call|its|it s|gusting|steady|kinda|kind of|pretty much)';
 
 /** Parse a sentence into an ordered list of commands (fire-type commands always last). */
 export function parseCommands(text) {
@@ -145,11 +148,11 @@ export function parseCommands(text) {
 
   // --- environment calls ------------------------------------------------------
   take(new RegExp(`\\b(no wind|wind (is )?(calm|zero|nothing|none)|calm wind|zero wind)\\b`, 'g'), () => ({ type: 'wind', value: 0, dir: null }));
-  const WDIR = '(?:(?:coming |blowing )?(?:from )?(?:the )?(?:full value )?(left|right)(?: to (?:the )?(?:left|right))?)';
+  const WDIR = '(?:(?:is )?(?:coming |blowing |going )?(?:in )?(?:from )?(?:the )?(?:full value )?(left|right)(?: to (?:the )?(?:left|right))?)';
   const WUNIT = '(?:\\s+(?:mph|miles? per hour|miles? an hour|knots|mile))?';
-  take(new RegExp(`\\bwinds?\\s+(?:is\\s+|at\\s+|of\\s+|about\\s+|call\\s+)*${NUMTOK}${WUNIT}(?:\\s+${WDIR})?`, 'g'),
+  take(new RegExp(`\\bwinds?\\s+(?:${FILLER}\\s+)*${NUMSTRICT}${WUNIT}(?:\\s+${WDIR})?`, 'g'),
     (m, a, dir) => ({ type: 'wind', value: Math.abs(num(a)), dir: dir || null }));
-  take(new RegExp(`\\bwinds?\\s+(?:is\\s+)?${WDIR}\\s+(?:at\\s+)?${NUMTOK}${WUNIT}`, 'g'),
+  take(new RegExp(`\\bwinds?\\s+(?:is\\s+)?${WDIR}(?:\\s+(?:${FILLER}|blowing|coming))*\\s+${NUMSTRICT}${WUNIT}`, 'g'),
     (m, dir, a) => ({ type: 'wind', value: Math.abs(num(a)), dir }));
 
   const YARD = 0.9144;
@@ -165,7 +168,12 @@ export function parseCommands(text) {
     const v = num(a);
     return v >= 50 ? { type: 'range', value: Math.round((v * YARD) / 10) * 10 } : null;
   });
-  take(new RegExp(`${B}${NUM}\\s+(?:meters|metres|meter|metre)\\b(?!\\s+per)`, 'g'), (m, a) => {
+  take(new RegExp(`${B}${NUMSTRICT}(?:\\s+(\\d{2}))?\\s+(?:meters?\\s+|metres?\\s+)?out\\b`, 'g'), (m, a, b) => {
+    let v = num(a);
+    if (b && v < 10) v = v * 100 + parseInt(b, 10); // "four fifty out"
+    return v >= 50 ? { type: 'range', value: v } : null;
+  });
+  take(new RegExp(`${B}${NUM}\\s+(?:meters|metres|meter|metre)\\b(?!\\s+(?:per|a second|an second))`, 'g'), (m, a) => {
     const v = num(a);
     return v >= 50 ? { type: 'range', value: v } : null;
   });
@@ -175,11 +183,11 @@ export function parseCommands(text) {
   take(new RegExp(`${B}${NUM}\\s+(?:degrees?\\b(?:\\s+(fahrenheit|f|celsius|centigrade|c)\\b)?|(celsius|centigrade)\\b)`, 'g'), (m, a, u, u2) => ({ type: 'temp', value: toF(num(a), u || u2) }));
 
   // Target speed is in m/s; convert mph and km/h if the spotter uses them.
-  const SPEED_UNIT = '(?:\\s+(meters? per second|metres? per second|m s|m\\/s|mps|mph|miles? (?:per|an) hour|km h|km\\/h|kph|kmh|kilometers? (?:per|an) hour|kilometres? (?:per|an) hour))?';
+  const SPEED_UNIT = '(?:\\s+(meters? per second|meters? a second|metres? a second|meters? per sec|metres? per second|m s|m\\/s|mps|mph|miles? (?:per|an) hour|km h|km\\/h|kph|kmh|kilometers? (?:per|an) hour|kilometres? (?:per|an) hour))?';
   const toMps = (v, unit) => (!unit ? v : /^(mph|mile)/.test(unit) ? Math.round(v * 0.447 * 10) / 10 : /^(km|kph|kilo)/.test(unit) ? Math.round((v / 3.6) * 10) / 10 : v);
-  take(new RegExp(`\\b(?:moving|speed|traveling|travelling|going|walking|running|doing)\\b(?:\\s+(?:left|right|to the left|to the right|at|about|around|is|of))*\\s+${NUMTOK}${SPEED_UNIT}`, 'g'),
+  take(new RegExp(`\\b(?:moving|speed|traveling|travelling|going|walking|running|doing|jogging|strolling)\\b(?:\\s+(?:left|right|to the left|to the right|slow|slowly|fast|quick|pretty|real|really|${FILLER}))*\\s+${NUMTOK}${SPEED_UNIT}`, 'g'),
     (m, a, u) => ({ type: 'speed', value: toMps(num(a), u) }));
-  take(new RegExp(`${B}${NUM}\\s+(meters? per second|metres? per second|m s|m\\/s|mps|km h|km\\/h|kph|kmh)\\b`, 'g'), (m, a, u) => ({ type: 'speed', value: toMps(num(a), u) }));
+  take(new RegExp(`${B}${NUM}\\s+(meters? a second|metres? a second|meters? per second|metres? per second|m s|m\\/s|mps|km h|km\\/h|kph|kmh)\\b`, 'g'), (m, a, u) => ({ type: 'speed', value: toMps(num(a), u) }));
   take(/\b(?:stationary|not moving|stopped|standing still|he'?s still|hes stopped|static)\b/g, () => ({ type: 'speed', value: 0 }));
 
   take(new RegExp(`\\blead(?:\\s+(?:him|her|it|by|of|left|right))*\\s+${NUMTOK}(?:\\s+mils?)?`, 'g'), (m, a) => ({ type: 'lead', value: num(a) }));
@@ -220,7 +228,7 @@ export function parseCommands(text) {
 
   // No number: "move right", "a little higher", "bump it up", "a hair left", "way more left".
   // A little = 0.2 mil, plain = 0.5 mil, a lot = 1 mil.
-  const SMALL = 'a little|a little bit|a bit|a hair|a tad|a touch|slightly|a smidge|just a bit|a skosh|a click';
+  const SMALL = 'just a little|just a little bit|just a hair|just a touch|just a tad|a little|a little bit|a tiny bit|a tiny little bit|tiny bit|little bit|a bit|a hair|a tad|a touch|slightly|a smidge|just a bit|a skosh|a click|a tiny amount|a smidgen';
   const BIG = 'a lot|a lot more|way|way more|much|lots|a whole lot|a full mil';
   const VERB = 'move|come|go|shift|nudge|bump|aim|hold|adjust|dial|walk|bring|put it|correct|favor|favour|get';
   const amount = (deg) => (!deg ? 0.5 : new RegExp(`^(?:${BIG})$`).test(deg.trim()) ? 1 : new RegExp(`^(?:${SMALL})$`).test(deg.trim()) ? 0.2 : 0.5);
@@ -234,7 +242,7 @@ export function parseCommands(text) {
   take(/\b(status|read ?back|say again|what'?s your (solution|status)|repeat( that)?)\b/g, () => ({ type: 'status' }));
 
   // --- fire -----------------------------------------------------------------------
-  if (/\b(fire|fired|firing|shoot|send it|sent it|take (the|your|him|her) (shot|out)|take him out|take her out|take it|take him|execute|green ?light|engage|drop him|drop her|drop the hammer|pull the trigger|squeeze|break the shot|send the round|light him up|smoke him|hit him|smoke check|weapons free|cleared to engage|cleared hot|your shot|on you|punch it|let it fly|let it rip|bang|now now|go go)\b/.test(s)
+  if (/\b(fire|fired|firing|shoot|send it|sent it|take (the|your|him|her) (shot|out)|take him out|take her out|take it|take him|execute|green ?light|engage|drop him|drop her|drop the hammer|pull the trigger|squeeze|break the shot|send the round|light him up|smoke him|hit him|smoke check|weapons free|cleared to engage|cleared hot|your shot|on you|punch it|let it fly|let it rip|bang|now now|go go|go ahead|do it|go for it|hit it|pull it|whack him|nail him|get him)\b/.test(s)
     || /^\s*(now|go)\s*$/.test(s)) {
     cmds.push({ type: 'fire' });
   }

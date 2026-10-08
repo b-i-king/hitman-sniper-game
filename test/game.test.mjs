@@ -142,3 +142,18 @@ test('outfits fit the setting', () => {
   assert.equal(style('market'), 'parka');
   assert.equal(style('rooftop'), 'suit');
 });
+
+test('pick the target by describing them', async () => {
+  const { findByDescription } = await import('../public/js/world.js');
+  const w = new World(LEVELS.find((l) => l.id === 'market'), { rng: mulberry32(2) });
+  const xOf = (p) => w.personState(p, 0).x;
+  const find = (t) => findByDescription(t, w.people, () => true, xOf);
+  assert.equal(find('shoot the man with the red scarf').person, w.target);
+  assert.ok(!find('the dude with the blue scarf').person.isTarget);
+  assert.deepEqual(find('the guy in the navy parka').ambiguous.length, 2);
+  assert.equal(find('move right a little'), null);
+  assert.equal(find('wind 8 from the right'), null);
+  const farm = new World(LEVELS.find((l) => l.id === 'farm'), { rng: mulberry32(2) });
+  assert.equal(findByDescription('the guy in the black hat', farm.people).person, farm.target);
+  assert.equal(findByDescription('the one in the middle', farm.people, () => true, (p) => p.x).person, farm.target);
+});

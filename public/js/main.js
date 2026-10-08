@@ -1,6 +1,6 @@
 import { LEVELS } from './levels.js';
 import { generateLevel } from './endless.js';
-import { World, describeOutfit, scoreShot, PASS_SCORE, HINT_CAP, WOUNDED_ESCAPE_CAP, FOLLOW_UP_FACTOR } from './world.js';
+import { World, describeOutfit, findByDescription, scoreShot, PASS_SCORE, HINT_CAP, WOUNDED_ESCAPE_CAP, FOLLOW_UP_FACTOR } from './world.js';
 import { Sniper } from './sniper.js';
 import { Renderer, drawPortrait } from './render.js';
 import { parseCommands, sanitizeCommands } from './commands.js';
@@ -242,7 +242,18 @@ async function handleUtterance(text, { typed = false } = {}) {
   log('spotter', text);
   $('transcript').textContent = text;
   $('transcript').classList.remove('interim');
-  if (!echo && !cmds.length && game.services.llm && game.phase === 'live' && text.split(/\s+/).length >= 2) {
+  // "The guy in the orange cap", "the one on the far left": pick the target by description.
+  let asked = false;
+  if (!echo && game.phase === 'live' && !cmds.some((c) => c.type === 'target')) {
+    const { world } = game;
+    const found = findByDescription(text, world.people, (p) => world.isVisible(p, game.t), (p) => world.personState(p, game.t).x);
+    if (found?.person) cmds.unshift({ type: 'target', id: found.person.label });
+    else if (found?.ambiguous) {
+      sniperSay(`${found.ambiguous.length} people fit that: numbers ${found.ambiguous.join(' and ')}. Which one?`);
+      asked = true;
+    }
+  }
+  if (!echo && !asked && !cmds.length && game.services.llm && game.phase === 'live' && text.split(/\s+/).length >= 2) {
     try {
       const res = await fetch('/api/sniper', {
         method: 'POST',
@@ -257,7 +268,7 @@ async function handleUtterance(text, { typed = false } = {}) {
     }
   }
   if (!cmds.length) {
-    if (game.phase === 'live') {
+    if (game.phase === 'live' && !asked) {
       sniperSay('Say again, spotter.');
       game.coachMiss = { text, until: performance.now() + 6000 };
       renderCoach();
@@ -301,9 +312,9 @@ function compactReadback(cmds) {
   const bits = [];
   if (has('target') && game.sniper.target) bits.push(`tango ${s.targetLabel}, ${describeOutfit(game.sniper.target.outfit)}`);
   if (has('range')) bits.push(`range ${s.range}`);
-  if (has('wind')) bits.push(s.wind ? `wind ${fmt(s.wind)} ${s.windDir}` : 'no wind');
+  if (has('wind')) bits.push(s.wind ? `wind ${+fmt(s.wind)} ${s.windDir}` : 'no wind');
   if (has('temp')) bits.push(`temp ${s.tempF}`);
-  if (has('speed')) bits.push(s.speed ? `lead ${fmt(s.speed)}` : 'no lead');
+  if (has('speed')) bits.push(s.speed ? `lead ${+fmt(s.speed)}` : 'no lead');
   if (has('aim')) bits.push(s.part === 'head' ? 'head' : 'center mass');
   if (has('adjust')) bits.push('corrections in');
   const line = bits.join(', ');
@@ -653,7 +664,7 @@ function coachTip() {
     return { step: 'FOLLOW-UP', text: `He survived and is running at about ${fmt(sp)} m/s. Call the lead, aim center mass (a bigger target on a runner) and shoot before he is out of sight.`, say: [`Moving at ${fmt(sp)}, center mass, send it`] };
   }
   if (s.targetLabel == null) {
-    return { step: '1 · IDENTIFY', text: `Scan the binoculars (drag or arrow keys, scroll to zoom). Find the person who matches: ${L.target.description}`, say: ['Target <number>', 'Tango <number>'] };
+    return { step: '1 · IDENTIFY', text: `Scan the binoculars (drag or arrow keys, scroll to zoom). Find the person who matches: ${L.target.description} Use his number, or just describe him.`, say: ['Target <number>', 'The guy in the …', 'The one on the left'] };
   }
   if (!s.range) {
     return L.rangefinder

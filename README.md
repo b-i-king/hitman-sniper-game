@@ -53,6 +53,26 @@ describes someone. Survival contracts dress their targets, decoys and crowds the
 Hold `Space` to talk; a red **● REC** badge appears on the view and the mic button turns red.
 Release to send.
 
+### Talk naturally
+
+You don't have to use exact phrases. Ghost picks the calls out of normal speech, fillers and
+all:
+
+> *"Okay so it's the guy in the orange cap, he's like 300 meters out, there's no wind, it's 59
+> degrees, aim for his head and go ahead."*
+
+- **Describe the target** instead of using a number: *"the dude in the black hat"*, *"the man
+  with the red scarf"*, *"the one on the far left"*, *"the one in the middle"*. If two people fit,
+  Ghost asks which number.
+- **Fillers are fine:** *"about"*, *"like"*, *"maybe"*, *"roughly"*, *"four fifty out"*,
+  *"walking pretty slow, like one meter a second"*.
+- **Many ways to say each thing:** *"go ahead"*, *"do it"*, *"take him out"*, *"drop the
+  hammer"* all fire; *"a tiny bit lower"*, *"just a little left"* nudge.
+
+This runs in the browser with no server and no delay. For sentences it still can't follow,
+run the local server with `LLM_API_KEY` set: anything the built-in parser doesn't understand
+is then sent to an AI model, which turns it into commands.
+
 ### The NEXT STEP coach
 
 A panel at the top right tells you what to say next: identify, range, wind, temperature, lead,
